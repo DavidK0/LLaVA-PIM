@@ -1,7 +1,8 @@
 # This script operates like llava.serve.cli
 # You can use this script to run several question/image pairs through LLaVA
 # Example usage:
-#   python llava_custom_inference --model-path liuhaotian/llava-v1.5-13b --image-file products_imgs --load-4bit
+#   python llava_custom_inference --model-path liuhaotian/llava-v1.5-13b --image-file products_imgs --load-4bit --composite_output composite_image.png
+# The questions are hard coded in the class ImageQA
 
 import argparse
 import torch
@@ -14,10 +15,13 @@ from llava.mm_utils import process_images, tokenizer_image_token, get_model_name
 
 from PIL import Image
 
+# For the composite image
+from PIL import ImageDraw, ImageFont
+import math
+
 import requests
 from PIL import Image
 from io import BytesIO
-#from transformers import TextStreamer
 
 import time
 import datetime
@@ -31,35 +35,44 @@ def load_image(image_file):
         image = Image.open(image_file).convert('RGB')
     return image
 
-# A helper function for formatting elapsed time
-def get_elapsed_time(start_time, end_time):
-    elapsed_time = end_time - start_time
-    elapsed_seconds = datetime.timedelta(seconds=elapsed_time).total_seconds()
-    return f"{elapsed_seconds:.2f} seconds"
-
 # This class represents one question and one answer
 class Q_and_A:
-    # Example question: "What brand is this?"
-    # Corresponding short_form: "Brand"
-    def __init__(self, question, short_form):
+    def __init__(self, question):
         self.question = question
-        self.short_form = short_form
         self.answer = None
 
-# Create the list of questions
-Q_and_As = []
-Q_and_As.append(Q_and_A("What type of product is this?", "Type"))
-Q_and_As.append(Q_and_A("What brand is this?", "Brand"))
-Q_and_As.append(Q_and_A("What flavor is it?", "Flavor"))
-Q_and_As.append(Q_and_A("What style package is it in?", "Packaging"))
-#Q_and_As.append(Q_and_A("Is any of this text nutritional information? If so what does it say?", "Nutritional check2"))
-Q_and_As.append(Q_and_A("Is there any nutritional text you can read? If so, what does it say?", "Nutritional check"))
-#Q_and_As.append(Q_and_A("What nutritional information can you read", "Nutritional"))
-#Q_and_As.append(Q_and_A("Is there any readable text that tell you the size of this?", "Size check"))
-#Q_and_As.append(Q_and_A("What size information can you read", "Size"))
-
-# Append a message to the first question to encourage short answers
-#Q_and_As[0].question += "Don't use full sentences."
+# This class represents one image and several questions.
+# The questions are hard coded, and the order matters since the model can see the answers to previous questions
+class ImageQA:
+    def __init__(self, image_path):
+        self.image_path = image_path
+        self.image = Image.open(self.image_path).convert('RGB')
+        self.image_tensor = None
+        
+        self.questions = {"Section" : Q_and_A("Which supermarket section would have this product?"),
+                          "Package" : Q_and_A("What style packaging is it in?"),
+                          "Facing" : Q_and_A("Which side of this product are you looking at?"),
+                          "Brand" : Q_and_A("What brand is it?"),
+                          "Product" : Q_and_A("What base type of product is it?"),
+                          "Type" : Q_and_A("What flavor, type, or variant is it?"),
+                          "Size" : Q_and_A("What size information can you read?",)}
+                          #"Nutrition" : Q_and_A("What nutritional information can you read?"),
+            
+        # Append a message to the first question to encourage short answers and accurate answers
+        self.questions[next(iter(self.questions))].question += " Be accurate but only use the necessary words. If you don't know the answer, or if you can read some text but aren't sure what it is used for, say 'unknown'. Only use information from the picture."
+    
+    @staticmethod
+    def process_images(imageQAs, image_processor, model):
+        images_list = [imageQA.image for imageQA in imageQAs]
+        image_tensors = process_images(images_list, image_processor, model.config)
+        
+        if type(image_tensors) is list:
+            image_tensors = [image.to(model.device, dtype=torch.float16) for image in image_tensors]
+        else:
+            image_tensors = image_tensors.to(model.device, dtype=torch.float16)
+            
+        for imageQA, image_tensor in zip(imageQAs, image_tensors):
+            imageQA.image_tensor = image_tensor.unsqueeze(0)
 
 def main(args):
     start_time = time.time() # Time tracking
@@ -89,87 +102,177 @@ def main(args):
         roles = ('user', 'assistant')
     else:
         roles = conv.roles
+        
+    # Check the system message
+    #print(conv.system)
     
     # Load the image or images
-    images = []
-    if os.path.isfile(args.image_file):  # Check if the argument is a file
-        images.append(Image.open(args.image_file))
-    elif os.path.isdir(args.image_file):  # Check if the argument is a directory
-        for filename in os.listdir(args.image_file):
-            if filename.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp')):
-                image_path = os.path.join(args.image_file, filename)
-                image = Image.open(image_path).convert('RGB')
-                images.append(image)
-    
-    # Similar operation in model_worker.py
-    print(images)
-    image_tensors = process_images(images, image_processor, model.config)
-    if type(image_tensors) is list:
-        image_tensors = [image.to(model.device, dtype=torch.float16) for image in image_tensors]
+    image_paths = []
+    if os.path.isfile(args.image_file):
+        image_paths = [args.image_file]
+    elif os.path.isdir(args.image_file):
+        image_paths = [os.path.join(args.image_file, f) for f in os.listdir(args.image_file)]
+    image_paths = [f for f in image_paths if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp'))]
+    if not image_paths:
+        raise ValueError("No valid image files found in the specified directory or file.")
     else:
-        image_tensors = image_tensors.to(model.device, dtype=torch.float16)
+        pass
+    
+    # Create ImageQA objects
+    imageQAs = []
+    for image_path in image_paths:
+        new_imageQA = ImageQA(image_path)
+        imageQAs.append(new_imageQA)
+    
+    # Process the images all at once for efficiency
+    ImageQA.process_images(imageQAs, image_processor, model)
     
     image_load_time = time.time()
     print(f"Starting inference")
     
-    for image_tensor in image_tensors:
-        image_tensor = image_tensor.unsqueeze(0)
-        
+    for imageQA in imageQAs:
         conv = conv_templates[args.conv_mode].copy() # Reset the conversation
         first_question = True # True if the first question has not been asked yet
         
-        print()
-        for question_index, Q_and_A in enumerate(Q_and_As):
-            print(f"Asking question {question_index+1} of {len(Q_and_As)}", end = "\r")
-            inp = Q_and_A.question
-
+        # Iterate over the keys to the question dictionary
+        for question_index, question_key in enumerate(imageQA.questions):
+            # Get the question
+            Q_and_A = imageQA.questions[question_key]
+            
+            progress = f"{question_index/len(imageQA.questions):.0%}"
+            image_name = os.path.basename(imageQA.image_path)
+            print(f"{progress} {image_name} Asking question {question_index+1} of {len(imageQA.questions)}", end = "\r")
+            
+            question_text = Q_and_A.question
+            
+            # Process the first message in a special way
             if first_question:
-                # first message
                 if model.config.mm_use_im_start_end:
-                    inp = DEFAULT_IM_START_TOKEN + DEFAULT_IMAGE_TOKEN + DEFAULT_IM_END_TOKEN + '\n' + inp
+                    question_text = DEFAULT_IM_START_TOKEN + DEFAULT_IMAGE_TOKEN + DEFAULT_IM_END_TOKEN + '\n' + question_text
                 else:
-                    inp = DEFAULT_IMAGE_TOKEN + '\n' + inp
-                conv.append_message(conv.roles[0], inp)
+                    question_text = DEFAULT_IMAGE_TOKEN  + question_text
                 first_question = False
-            else:
-                # later messages
-                conv.append_message(conv.roles[0], inp)
+            
+            # Add update the conversation
+            conv.append_message(conv.roles[0], question_text)
             conv.append_message(conv.roles[1], None)
             prompt = conv.get_prompt()
-
+            
+            # Prepare for inference
             input_ids = tokenizer_image_token(prompt, tokenizer, IMAGE_TOKEN_INDEX, return_tensors='pt').unsqueeze(0).to(model.device)
             stop_str = conv.sep if conv.sep_style != SeparatorStyle.TWO else conv.sep2
             keywords = [stop_str]
             stopping_criteria = KeywordsStoppingCriteria(keywords, tokenizer, input_ids)
-            #streamer = TextStreamer(tokenizer, skip_prompt=True, skip_special_tokens=True)
-
+            
+            # Run inference
             with torch.inference_mode():
                 output_ids = model.generate(
                     input_ids,
-                    images=image_tensor,
+                    images=imageQA.image_tensor,
                     do_sample=True if args.temperature > 0 else False,
                     temperature=args.temperature,
                     max_new_tokens=args.max_new_tokens,
-                    #streamer=streamer,
                     use_cache=True,
                     stopping_criteria=[stopping_criteria])
-
+            
+            # Decode the output and update the answer to the question
             outputs = tokenizer.decode(output_ids[0, input_ids.shape[1]:]).strip()
             conv.messages[-1][-1] = outputs
             Q_and_A.answer = outputs[:-4]
-
-            if args.debug:
-                print("\n", {"prompt": prompt, "outputs": outputs}, "\n")
+        
+        # Print the dialogue as it is actually seen by the model.
+        if args.debug:
+            print(f"Final dialogue: {conv.get_prompt()}")
+        
+        # Print the answers to the questions, formatted nicely
+        if args.verbose:
+            for question_key, Q_and_A in imageQA.questions.items():
+                print(f"{question_key}\t{Q_and_A.answer}")
     
-        #final_prompt = conv.get_prompt()
-        #print(final_prompt)
-        print()
-        for Q_and_A in Q_and_As:
-            print(f"{Q_and_A.short_form}: {Q_and_A.answer}")
+    # A helper function for formatting elapsed time
+    def get_elapsed_time(start_time, end_time):
+        elapsed_time = end_time - start_time
+        elapsed_seconds = datetime.timedelta(seconds=elapsed_time).total_seconds()
+        return elapsed_seconds
     
-    end_time = time.time() # Time tracking
-    print(f"Total inference time: {get_elapsed_time(image_load_time, end_time)}")
+    # Time tracking
+    end_time = time.time()
+    total_time = get_elapsed_time(image_load_time, end_time)
+    print(f"\nTotal inference time: {total_time:.2f} seconds")
+    if len(imageQAs) > 1:
+        time_per_image = total_time / len(imageQAs)
+        print(f"Inference time per image: {time_per_image:.2f} seconds")
+    time_per_question = total_time / sum([len(x.questions) for x in imageQAs])
+    print(f"Inference time per question: {time_per_question:.2f} seconds")
+    
+    if args.composite_output:
+        composite_image = create_composite_image(imageQAs)
+        composite_image.show()  # Display the image
+        composite_image.save(args.composite_output)  # Save the image to a file
 
+def create_composite_image(imageQAs):
+    images_per_row = math.ceil(math.sqrt(len(imageQAs)))
+    image_horizontal_padding = 5
+    image_vertical_padding = 0
+    
+    # Determine the target height based on the average image
+    target_width = sum(imageQA.image.width for imageQA in imageQAs)//len(imageQAs)
+
+    # Resize images to have the same height while maintaining aspect ratio
+    for imageQA in imageQAs:
+        #print(f"original size: {imageQA.image.width}, {imageQA.image.height}")
+        aspect_ratio = imageQA.image.height / imageQA.image.width
+        new_height = int(target_width * aspect_ratio)
+        resized_image = imageQA.image.resize((target_width, new_height))
+        imageQA.image = resized_image  # Update the imageQA with the resized image
+        
+        #print(f"new size: {imageQA.image.width}, {imageQA.image.height}")
+
+    # Calculate the width and height of each row
+    max_row_width = 0
+    for x in range(0, len(imageQAs), images_per_row):
+        row_width = sum([image.width for image in [imageQA.image for imageQA in imageQAs[x:x+images_per_row]]])
+        if row_width > max_row_width:
+            max_row_width = row_width
+    max_image_height = max([imageQA.image.height for imageQA in imageQAs])
+    max_text_height = max([15 * (len(imageQA.questions) + 1) for imageQA in imageQAs])
+    
+    total_width = max_row_width + (image_horizontal_padding * (images_per_row - 1))
+    total_rows = math.ceil(len(imageQAs) / images_per_row)
+    total_height = (max_image_height + max_text_height) * total_rows + (image_vertical_padding * (total_rows - 1))
+
+    # Create a blank composite image with white background
+    composite_image = Image.new('RGB', (total_width, total_height), 'white')
+    font = ImageFont.load_default()
+    draw = ImageDraw.Draw(composite_image)
+
+    # Initialize variables to keep track of the current x and y positions
+    x_position = 0
+    y_position = 0
+
+    # Iterate through each ImageQA object and their answers
+    for idx, imageQA in enumerate(imageQAs):
+        # If we have reached the maximum number of images per row, reset x_position and update y_position
+        if idx % images_per_row == 0 and idx != 0:
+            x_position = 0
+            y_position += max_image_height + max_text_height + image_vertical_padding
+
+        # Paste the image onto the composite image
+        composite_image.paste(imageQA.image, (x_position, y_position))
+
+        # Draw the answer text underneath the image
+        text_y_offset = imageQA.image.height
+        draw.text((x_position, y_position + text_y_offset), os.path.basename(imageQA.image_path), fill='black', font=font)
+        text_y_offset += 15
+        for question_key, Q_and_A in imageQA.questions.items():
+            draw.text((x_position, y_position + text_y_offset), f"{question_key}:".ljust(12) + str(Q_and_A.answer), fill='black', font=font)
+            text_y_offset += 15
+
+        # Update the x-position for the next image
+        x_position += imageQA.image.width + image_horizontal_padding
+
+    return composite_image
+    
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -183,5 +286,7 @@ if __name__ == "__main__":
     parser.add_argument("--load-8bit", action="store_true")
     parser.add_argument("--load-4bit", action="store_true")
     parser.add_argument("--debug", action="store_true")
+    parser.add_argument("--verbose", action="store_true", help="Set true to output the dialogue as it is generated")
+    parser.add_argument("--composite_output", type=str, help="The path of the composite image", default=None)
     args = parser.parse_args()
     main(args)
