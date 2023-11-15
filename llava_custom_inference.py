@@ -43,6 +43,7 @@ class Q_and_A:
 
 # This class represents one image and several questions.
 # The questions are hard coded, and the order matters since the model can see the answers to previous questions
+IMAGEQA_SYSTEM_MESSAGE = " Be accurate but brief. Only answer with text from the image, or if you don't know the answer, say 'unknown' or 'none'."
 class ImageQA:
     def __init__(self, image_path):
         self.image_path = image_path
@@ -50,16 +51,16 @@ class ImageQA:
         self.image_tensor = None
         
         self.questions = {"Section" : Q_and_A("Which supermarket section would have this product?"),
-                          "Package" : Q_and_A("What style packaging is it in?"),
+                          "Package" : Q_and_A("What type of packaging is it in?"),
                           "Facing" : Q_and_A("Which side of this product are you looking at?"),
                           "Brand" : Q_and_A("What brand is it?"),
                           "Product" : Q_and_A("What base type of product is it?"),
                           "Type" : Q_and_A("What flavor, type, or variant is it?"),
-                          "Size" : Q_and_A("What size information can you read?",)}
+                          "Size" : Q_and_A("What size information can you read on the label?"),}
                           #"Nutrition" : Q_and_A("What nutritional information can you read?"),
             
         # Append a message to the first question to encourage short answers and accurate answers
-        self.questions[next(iter(self.questions))].question += " Be accurate but only use the necessary words. If you don't know the answer, or if you can read some text but aren't sure what it is used for, say 'unknown'. Only use information from the picture."
+        self.questions[next(iter(self.questions))].question += IMAGEQA_SYSTEM_MESSAGE
     
     @staticmethod
     def process_images(imageQAs, image_processor, model):
@@ -130,6 +131,9 @@ def main(args):
     image_load_time = time.time()
     print(f"Starting inference")
     
+    num_questions = sum([len(imageQA.questions) for imageQA in imageQAs])
+    question_counter = 0
+    
     for imageQA in imageQAs:
         conv = conv_templates[args.conv_mode].copy() # Reset the conversation
         first_question = True # True if the first question has not been asked yet
@@ -139,7 +143,8 @@ def main(args):
             # Get the question
             Q_and_A = imageQA.questions[question_key]
             
-            progress = f"{question_index/len(imageQA.questions):.0%}"
+            question_counter += 1
+            progress = f"{question_counter/num_questions:.0%}"
             image_name = os.path.basename(imageQA.image_path)
             print(f"{progress} {image_name} Asking question {question_index+1} of {len(imageQA.questions)}", end = "\r")
             
@@ -211,6 +216,9 @@ def main(args):
         composite_image.save(args.composite_output)  # Save the image to a file
 
 def create_composite_image(imageQAs):
+    title_padding = 15
+    title = IMAGEQA_SYSTEM_MESSAGE
+    
     images_per_row = math.ceil(math.sqrt(len(imageQAs)))
     image_horizontal_padding = 5
     image_vertical_padding = 0
@@ -242,9 +250,11 @@ def create_composite_image(imageQAs):
     total_height = (max_image_height + max_text_height) * total_rows + (image_vertical_padding * (total_rows - 1))
 
     # Create a blank composite image with white background
-    composite_image = Image.new('RGB', (total_width, total_height), 'white')
+    composite_image = Image.new('RGB', (total_width, total_height + title_padding), 'white')
     font = ImageFont.load_default()
     draw = ImageDraw.Draw(composite_image)
+    
+    draw.text((0,0), title, fill='black', font=font)
 
     # Initialize variables to keep track of the current x and y positions
     x_position = 0
@@ -258,14 +268,14 @@ def create_composite_image(imageQAs):
             y_position += max_image_height + max_text_height + image_vertical_padding
 
         # Paste the image onto the composite image
-        composite_image.paste(imageQA.image, (x_position, y_position))
+        composite_image.paste(imageQA.image, (x_position, y_position + title_padding))
 
         # Draw the answer text underneath the image
         text_y_offset = imageQA.image.height
-        draw.text((x_position, y_position + text_y_offset), os.path.basename(imageQA.image_path), fill='black', font=font)
+        draw.text((x_position, y_position + text_y_offset + title_padding), os.path.basename(imageQA.image_path), fill='black', font=font)
         text_y_offset += 15
         for question_key, Q_and_A in imageQA.questions.items():
-            draw.text((x_position, y_position + text_y_offset), f"{question_key}:".ljust(12) + str(Q_and_A.answer), fill='black', font=font)
+            draw.text((x_position, y_position + text_y_offset + title_padding), f"{question_key}:".ljust(12) + str(Q_and_A.answer), fill='black', font=font)
             text_y_offset += 15
 
         # Update the x-position for the next image
