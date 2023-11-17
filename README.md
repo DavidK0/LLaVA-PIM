@@ -5,6 +5,6 @@ In this repo I use the vision-language model LLaVA to extract product informatio
 
 1. Follow the instruction for setting up [LLaVA](https://github.com/haotian-liu/LLaVA/)
 2. Clone this repo
-3. Run something like `python llava_custom_inference --model-path liuhaotian/llava-v1.5-13b --image-file imgs_folder --load-4bit`
+3. Run something like `python llava_custom_inference.py --model-path liuhaotian/llava-v1.5-13b --image-file imgs_folder --load-4bit`
 
 The questions are hard-coded.
