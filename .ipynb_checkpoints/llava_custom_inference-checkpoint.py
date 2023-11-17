@@ -4,85 +4,106 @@
 #   python llava_custom_inference --model-path liuhaotian/llava-v1.5-13b --image-file products_imgs --load-4bit --composite_output composite_image.png
 # The questions are hard coded in the class ImageQA
 
+# Standard library imports
 import argparse
-import torch
+import csv
+import datetime
+import math
+import os
+import time
+from io import BytesIO
 
-from llava.constants import IMAGE_TOKEN_INDEX, DEFAULT_IMAGE_TOKEN, DEFAULT_IM_START_TOKEN, DEFAULT_IM_END_TOKEN
+# Related third party imports
+import requests
+import torch
+from PIL import Image, ImageDraw, ImageFont
+
+# Local application/library specific imports
+from llava.constants import (
+    IMAGE_TOKEN_INDEX, 
+    DEFAULT_IMAGE_TOKEN, 
+    DEFAULT_IM_START_TOKEN, 
+    DEFAULT_IM_END_TOKEN
+)
 from llava.conversation import conv_templates, SeparatorStyle
 from llava.model.builder import load_pretrained_model
 from llava.utils import disable_torch_init
-from llava.mm_utils import process_images, tokenizer_image_token, get_model_name_from_path, KeywordsStoppingCriteria
+from llava.mm_utils import (
+    process_images, 
+    tokenizer_image_token, 
+    get_model_name_from_path, 
+    KeywordsStoppingCriteria
+)
 
-from PIL import Image
-
-# For the composite image
-from PIL import ImageDraw, ImageFont
-import math
-
-import requests
-from PIL import Image
-from io import BytesIO
-
-import time
-import datetime
-import os
+# Constants
+IMAGEQA_SYSTEM_MESSAGE = " Be accurate but brief. Only answer with text from the image, or if you don't know the answer, say 'unknown' or 'none'."
 
 def load_image(image_file):
-    if image_file.startswith('http://') or image_file.startswith('https://'):
+    """Load an image from a given file or URL."""
+    if image_file.startswith(('http://', 'https://')):
         response = requests.get(image_file)
         image = Image.open(BytesIO(response.content)).convert('RGB')
     else:
         image = Image.open(image_file).convert('RGB')
     return image
 
-# This class represents one question and one answer
 class Q_and_A:
+    """Represents a question and its corresponding answer."""
     def __init__(self, question):
         self.question = question
         self.answer = None
 
-# This class represents one image and several questions.
-# The questions are hard coded, and the order matters since the model can see the answers to previous questions
 class ImageQA:
+    """Represents an image and a set of questions related to the image."""
     def __init__(self, image_path):
         self.image_path = image_path
-        self.image = Image.open(self.image_path).convert('RGB')
+        self.image = load_image(image_path)
         self.image_tensor = None
-        
         self.questions = {"Section" : Q_and_A("Which supermarket section would have this product?"),
-                          "Package" : Q_and_A("What style packaging is it in?"),
-                          "Facing" : Q_and_A("Which side of this product are you looking at?"),
+                          "Package" : Q_and_A("What type of packaging is it in?"),
+                          "Facing" : Q_and_A("Which face of this product are you looking at?"),
                           "Brand" : Q_and_A("What brand is it?"),
                           "Product" : Q_and_A("What base type of product is it?"),
                           "Type" : Q_and_A("What flavor, type, or variant is it?"),
-                          "Size" : Q_and_A("What size information can you read?",)}
+                          "Size" : Q_and_A("What size information can you read on the label?"),}
                           #"Nutrition" : Q_and_A("What nutritional information can you read?"),
             
         # Append a message to the first question to encourage short answers and accurate answers
-        self.questions[next(iter(self.questions))].question += " Be accurate but only use the necessary words. If you don't know the answer, or if you can read some text but aren't sure what it is used for, say 'unknown'. Only use information from the picture."
-    
+        self.questions[next(iter(self.questions))].question += IMAGEQA_SYSTEM_MESSAGE
+
     @staticmethod
     def process_images(imageQAs, image_processor, model):
+        """Processes a list of images for inference."""
         images_list = [imageQA.image for imageQA in imageQAs]
         image_tensors = process_images(images_list, image_processor, model.config)
-        
-        if type(image_tensors) is list:
-            image_tensors = [image.to(model.device, dtype=torch.float16) for image in image_tensors]
-        else:
-            image_tensors = image_tensors.to(model.device, dtype=torch.float16)
+        image_tensors = [image.to(model.device, dtype=torch.float16) for image in image_tensors]
             
         for imageQA, image_tensor in zip(imageQAs, image_tensors):
             imageQA.image_tensor = image_tensor.unsqueeze(0)
 
-def main(args):
-    start_time = time.time() # Time tracking
+def load_images(image_file):
+    """Load and process images from a given file or directory."""
+    image_paths = []
+    if os.path.isfile(image_file):
+        image_paths = [image_file]
+    elif os.path.isdir(image_file):
+        image_paths = [os.path.join(image_file, f) for f in os.listdir(image_file)]
+    image_paths = [f for f in image_paths if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp'))]
     
-    # Model
+    if not image_paths:
+        raise ValueError("No valid image files found in the specified directory or file.")
+    
+    return image_paths
+
+def main(args):
+    start_time = time.time()
     disable_torch_init()
 
     model_name = get_model_name_from_path(args.model_path)
-    tokenizer, model, image_processor, context_len = load_pretrained_model(args.model_path, args.model_base, model_name, args.load_8bit, args.load_4bit, device=args.device)
-
+    tokenizer, model, image_processor, _ = load_pretrained_model(
+        args.model_path, args.model_base, model_name, args.load_8bit, args.load_4bit, device=args.device
+    )
+    
     if 'llama-2' in model_name.lower():
         conv_mode = "llava_llama_2"
     elif "v1" in model_name.lower():
@@ -97,41 +118,22 @@ def main(args):
     else:
         args.conv_mode = conv_mode
 
-    conv = conv_templates[args.conv_mode].copy()
-    if "mpt" in model_name.lower():
-        roles = ('user', 'assistant')
-    else:
-        roles = conv.roles
-        
-    # Check the system message
-    #print(conv.system)
-    
-    # Load the image or images
-    image_paths = []
-    if os.path.isfile(args.image_file):
-        image_paths = [args.image_file]
-    elif os.path.isdir(args.image_file):
-        image_paths = [os.path.join(args.image_file, f) for f in os.listdir(args.image_file)]
-    image_paths = [f for f in image_paths if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp'))]
-    if not image_paths:
-        raise ValueError("No valid image files found in the specified directory or file.")
-    else:
-        pass
-    
-    # Create ImageQA objects
-    imageQAs = []
-    for image_path in image_paths:
-        new_imageQA = ImageQA(image_path)
-        imageQAs.append(new_imageQA)
-    
-    # Process the images all at once for efficiency
+    roles = ('user', 'assistant') if "mpt" in model_name.lower() else conv_templates[conv_mode].roles
+
+    # Create imageQA objects
+    image_paths = load_images(args.image_file)
+    imageQAs = [ImageQA(image_path) for image_path in image_paths]
     ImageQA.process_images(imageQAs, image_processor, model)
     
     image_load_time = time.time()
     print(f"Starting inference")
     
+    num_questions = sum([len(imageQA.questions) for imageQA in imageQAs])
+    question_counter = 0
+    
     for imageQA in imageQAs:
         conv = conv_templates[args.conv_mode].copy() # Reset the conversation
+        
         first_question = True # True if the first question has not been asked yet
         
         # Iterate over the keys to the question dictionary
@@ -139,7 +141,8 @@ def main(args):
             # Get the question
             Q_and_A = imageQA.questions[question_key]
             
-            progress = f"{question_index/len(imageQA.questions):.0%}"
+            question_counter += 1
+            progress = f"{question_counter/num_questions:.0%}"
             image_name = os.path.basename(imageQA.image_path)
             print(f"{progress} {image_name} Asking question {question_index+1} of {len(imageQA.questions)}", end = "\r")
             
@@ -182,10 +185,11 @@ def main(args):
         
         # Print the dialogue as it is actually seen by the model.
         if args.debug:
-            print(f"Final dialogue: {conv.get_prompt()}")
+            print(f"\nFinal dialogue: {conv.get_prompt()}\n")
         
         # Print the answers to the questions, formatted nicely
         if args.verbose:
+            print()
             for question_key, Q_and_A in imageQA.questions.items():
                 print(f"{question_key}\t{Q_and_A.answer}")
     
@@ -205,12 +209,32 @@ def main(args):
     time_per_question = total_time / sum([len(x.questions) for x in imageQAs])
     print(f"Inference time per question: {time_per_question:.2f} seconds")
     
+    # Save as composite image
     if args.composite_output:
         composite_image = create_composite_image(imageQAs)
-        composite_image.show()  # Display the image
+        #composite_image.show()  # Display the image
         composite_image.save(args.composite_output)  # Save the image to a file
-
+    
+    # Save as CSV
+    if args.csv_output:
+        with open(args.csv_output, mode='w', newline='') as file:
+            csv_writer = csv.writer(file)
+            
+            header = []
+            for question in imageQAs[0].questions:
+                header.append(question)
+            csv_writer.writerow(header)
+            
+            for imageQA in imageQAs:
+                answers = []
+                for question_key, Q_and_A in imageQA.questions.items():
+                    answers.append(Q_and_A.answer)
+                csv_writer.writerow(answers)
+        
 def create_composite_image(imageQAs):
+    title_padding = 15
+    title = IMAGEQA_SYSTEM_MESSAGE
+    
     images_per_row = math.ceil(math.sqrt(len(imageQAs)))
     image_horizontal_padding = 5
     image_vertical_padding = 0
@@ -242,9 +266,11 @@ def create_composite_image(imageQAs):
     total_height = (max_image_height + max_text_height) * total_rows + (image_vertical_padding * (total_rows - 1))
 
     # Create a blank composite image with white background
-    composite_image = Image.new('RGB', (total_width, total_height), 'white')
+    composite_image = Image.new('RGB', (total_width, total_height + title_padding), 'white')
     font = ImageFont.load_default()
     draw = ImageDraw.Draw(composite_image)
+    
+    draw.text((0,0), title, fill='black', font=font)
 
     # Initialize variables to keep track of the current x and y positions
     x_position = 0
@@ -258,14 +284,14 @@ def create_composite_image(imageQAs):
             y_position += max_image_height + max_text_height + image_vertical_padding
 
         # Paste the image onto the composite image
-        composite_image.paste(imageQA.image, (x_position, y_position))
+        composite_image.paste(imageQA.image, (x_position, y_position + title_padding))
 
         # Draw the answer text underneath the image
         text_y_offset = imageQA.image.height
-        draw.text((x_position, y_position + text_y_offset), os.path.basename(imageQA.image_path), fill='black', font=font)
+        draw.text((x_position, y_position + text_y_offset + title_padding), os.path.basename(imageQA.image_path), fill='black', font=font)
         text_y_offset += 15
         for question_key, Q_and_A in imageQA.questions.items():
-            draw.text((x_position, y_position + text_y_offset), f"{question_key}:".ljust(12) + str(Q_and_A.answer), fill='black', font=font)
+            draw.text((x_position, y_position + text_y_offset + title_padding), f"{question_key}:".ljust(12) + str(Q_and_A.answer), fill='black', font=font)
             text_y_offset += 15
 
         # Update the x-position for the next image
@@ -285,8 +311,15 @@ if __name__ == "__main__":
     parser.add_argument("--max-new-tokens", type=int, default=512)
     parser.add_argument("--load-8bit", action="store_true")
     parser.add_argument("--load-4bit", action="store_true")
-    parser.add_argument("--debug", action="store_true")
+    parser.add_argument("--debug", action="store_true") # Show the dialogue as the model sees it
+    
+    # Choose at least one output method
+    #  --verbose           CLI output
+    #  --composite_output  Create a composite image
+    #  --csv_output        Save to a CSV
     parser.add_argument("--verbose", action="store_true", help="Set true to output the dialogue as it is generated")
-    parser.add_argument("--composite_output", type=str, help="The path of the composite image", default=None)
+    parser.add_argument("--composite_output", type=str, help="The path of the composite output image", default=None)
+    parser.add_argument("--csv_output", type=str, help="The path of the output csv", default=None)
+    
     args = parser.parse_args()
     main(args)
