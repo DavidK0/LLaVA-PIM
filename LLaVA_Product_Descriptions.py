@@ -96,14 +96,14 @@ def load_model(args = None):
     parser.add_argument("--load-8bit", action="store_true")
     parser.add_argument("--load-4bit", action="store_true")
     args = parser.parse_args(args)
-    
+
     global tokenizer, model, image_processor, roles
 
     disable_torch_init()
 
-    model_name = get_model_name_from_path(args["model_path"])
+    model_name = get_model_name_from_path(args.model_path)
     tokenizer, model, image_processor, _ = load_pretrained_model(
-        args["model_path"], args["model_base"], model_name, args["load_8bit"], args["load_4bit"], device=args["device"]
+        args.model_path, args.model_base, model_name, args.load_8bit, args.load_4bit, device=args.device
     )
     
     if 'llama-2' in model_name.lower():
@@ -115,14 +115,14 @@ def load_model(args = None):
     else:
         conv_mode = "llava_v0"
 
-    if args["conv_mode"] is not None and conv_mode != args["conv_mode"]:
-        print('[WARNING] the auto inferred conversation mode is {}, while `--conv-mode` is {}, using {}'.format(conv_mode, args["conv_mode"], args["conv_mode"]))
+    if args.conv_mode is not None and conv_mode != args.conv_mode:
+        print('[WARNING] the auto inferred conversation mode is {}, while `--conv-mode` is {}, using {}'.format(conv_mode, args.conv_mode, args.conv_mode))
     else:
-        args["conv_mode"] = conv_mode
+        args.conv_mode = conv_mode
 
     roles = ('user', 'assistant') if "mpt" in model_name.lower() else conv_templates[conv_mode].roles
 
-def main(args = None):
+def main(args):
     parser = argparse.ArgumentParser()
     parser.add_argument("--temperature", type=float, default=0) # Original default is 0.2
     parser.add_argument("--max-new-tokens", type=int, default=512)
@@ -139,9 +139,9 @@ def main(args = None):
     parser.add_argument("--csv_output", type=str, help="The path of the output csv", default=None)
     
     args = parser.parse_args(args)
-    
+
     # Create imageQA objects
-    image_paths = load_images(args["image_file"])
+    image_paths = load_images(args.image_file)
     imageQAs = [ImageQA(image_path) for image_path in image_paths]
     ImageQA.process_images(imageQAs, image_processor, model)
     
@@ -152,7 +152,7 @@ def main(args = None):
     question_counter = 0
     
     for imageQA in imageQAs:
-        conv = conv_templates[args["conv_mode"]].copy() # Reset the conversation
+        conv = conv_templates[args.conv_mode].copy() # Reset the conversation
         
         first_question = True # True if the first question has not been asked yet
         
@@ -192,9 +192,9 @@ def main(args = None):
                 output_ids = model.generate(
                     input_ids,
                     images=imageQA.image_tensor,
-                    do_sample=True if args["temperature"] > 0 else False,
-                    temperature=args["temperature"],
-                    max_new_tokens=args["max_new_tokens"],
+                    do_sample=True if args.temperature > 0 else False,
+                    temperature=args.temperature,
+                    max_new_tokens=args.max_new_tokens,
                     use_cache=True,
                     stopping_criteria=[stopping_criteria])
             
@@ -204,11 +204,11 @@ def main(args = None):
             Q_and_A.answer = outputs[:-4]
         
         # Print the dialogue as it is actually seen by the model.
-        if args["debug"]:
+        if args.debug:
             print(f"\nFinal dialogue: {conv.get_prompt()}\n")
         
         # Print the answers to the questions, formatted nicely
-        if args["verbose"]:
+        if args.verbose:
             print()
             for question_key, Q_and_A in imageQA.questions.items():
                 print(f"{question_key}\t{Q_and_A.answer}")
@@ -230,14 +230,14 @@ def main(args = None):
     print(f"Inference time per question: {time_per_question:.2f} seconds")
     
     # Save as composite image
-    if args["composite_output"]:
+    if args.composite_output:
         composite_image = create_composite_image(imageQAs)
         #composite_image.show()  # Display the image
-        composite_image.save(args["composite_output"])  # Save the image to a file
+        composite_image.save(args.composite_output)  # Save the image to a file
     
     # Save as CSV
-    if args["csv_output"]:
-        with open(args["csv_output"], mode='w', newline='') as file:
+    if args.csv_output:
+        with open(args.csv_output, mode='w', newline='') as file:
             csv_writer = csv.writer(file)
             
             header = []
@@ -319,7 +319,6 @@ def create_composite_image(imageQAs):
 
     return composite_image
     
-
 if __name__ == "__main__":
     load_model()
     main()
