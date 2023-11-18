@@ -35,7 +35,7 @@ from llava.mm_utils import (
     KeywordsStoppingCriteria
 )
 
-# Constants
+# This gets appended to the first question
 IMAGEQA_SYSTEM_MESSAGE = " Be accurate but brief. Only answer with text from the image, or if you don't know the answer, say 'unknown' or 'none'."
 
 class Q_and_A:
@@ -82,12 +82,13 @@ def load_images(image_file):
     image_paths = [f for f in image_paths if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp'))]
     
     if not image_paths:
-        raise ValueError("No valid image files found in the specified directory or file.")
+        raise ValueError(f"No valid image files found in the specified directory or file: {image_file}")
     
     return image_paths
 
-tokenizer, model, image_processor = None, None, None
+tokenizer, model, image_processor, conv_mode = None, None, None, None
 def load_model(args = None):
+    """Load an model from the given arguments"""
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-path", type=str, default="liuhaotian/llava-v1.5-7b")
     parser.add_argument("--model-base", type=str, default=None)
@@ -96,8 +97,8 @@ def load_model(args = None):
     parser.add_argument("--load-8bit", action="store_true")
     parser.add_argument("--load-4bit", action="store_true")
     args = parser.parse_args(args)
-
-    global tokenizer, model, image_processor, roles
+    
+    global tokenizer, model, image_processor, roles, conv_mode
 
     disable_torch_init()
 
@@ -117,18 +118,17 @@ def load_model(args = None):
 
     if args.conv_mode is not None and conv_mode != args.conv_mode:
         print('[WARNING] the auto inferred conversation mode is {}, while `--conv-mode` is {}, using {}'.format(conv_mode, args.conv_mode, args.conv_mode))
-    else:
-        args.conv_mode = conv_mode
+        conv_mode = args.conv_mode
 
     roles = ('user', 'assistant') if "mpt" in model_name.lower() else conv_templates[conv_mode].roles
 
-def main(args):
+def inference(args):
+    """Run inference using the previously loaded model"""
     parser = argparse.ArgumentParser()
+    parser.add_argument("--image-file", type=str, required=True)
     parser.add_argument("--temperature", type=float, default=0) # Original default is 0.2
     parser.add_argument("--max-new-tokens", type=int, default=512)
-    parser.add_argument("--image-file", type=str, required=True)
-    
-    parser.add_argument("--debug", action="store_true") # Show the dialogue as the model sees it
+    parser.add_argument("--debug", action="store_true", help="Show the dialogue as the model sees it")
     
     # Choose at least one output method
     #  --verbose           CLI output
@@ -137,7 +137,6 @@ def main(args):
     parser.add_argument("--verbose", action="store_true", help="Set true to output the dialogue as it is generated")
     parser.add_argument("--composite_output", type=str, help="The path of the composite output image", default=None)
     parser.add_argument("--csv_output", type=str, help="The path of the output csv", default=None)
-    
     args = parser.parse_args(args)
 
     # Create imageQA objects
@@ -152,7 +151,7 @@ def main(args):
     question_counter = 0
     
     for imageQA in imageQAs:
-        conv = conv_templates[args.conv_mode].copy() # Reset the conversation
+        conv = conv_templates[conv_mode].copy() # Reset the conversation
         
         first_question = True # True if the first question has not been asked yet
         
@@ -241,12 +240,13 @@ def main(args):
             csv_writer = csv.writer(file)
             
             header = []
+            header.append("image")
             for question in imageQAs[0].questions:
                 header.append(question)
             csv_writer.writerow(header)
             
             for imageQA in imageQAs:
-                answers = []
+                answers = [imageQA.image_path]
                 for question_key, Q_and_A in imageQA.questions.items():
                     answers.append(Q_and_A.answer)
                 csv_writer.writerow(answers)
@@ -321,4 +321,4 @@ def create_composite_image(imageQAs):
     
 if __name__ == "__main__":
     load_model()
-    main()
+    inference()
