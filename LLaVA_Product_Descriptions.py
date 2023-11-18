@@ -86,8 +86,17 @@ def load_images(image_file):
     
     return image_paths
 
-tokenizer, model, image_processor
-def load_model(args):
+tokenizer, model, image_processor = None, None, None
+def load_model(args = None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--model-path", type=str, default="liuhaotian/llava-v1.5-7b")
+    parser.add_argument("--model-base", type=str, default=None)
+    parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument("--conv-mode", type=str, default=None)
+    parser.add_argument("--load-8bit", action="store_true")
+    parser.add_argument("--load-4bit", action="store_true")
+    args = parser.parse_args(args)
+    
     global tokenizer, model, image_processor, roles
 
     disable_torch_init()
@@ -113,8 +122,24 @@ def load_model(args):
 
     roles = ('user', 'assistant') if "mpt" in model_name.lower() else conv_templates[conv_mode].roles
 
-def main(args):
-
+def main(args = None):
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--temperature", type=float, default=0) # Original default is 0.2
+    parser.add_argument("--max-new-tokens", type=int, default=512)
+    parser.add_argument("--image-file", type=str, required=True)
+    
+    parser.add_argument("--debug", action="store_true") # Show the dialogue as the model sees it
+    
+    # Choose at least one output method
+    #  --verbose           CLI output
+    #  --composite_output  Create a composite image
+    #  --csv_output        Save to a CSV
+    parser.add_argument("--verbose", action="store_true", help="Set true to output the dialogue as it is generated")
+    parser.add_argument("--composite_output", type=str, help="The path of the composite output image", default=None)
+    parser.add_argument("--csv_output", type=str, help="The path of the output csv", default=None)
+    
+    args = parser.parse_args(args)
+    
     # Create imageQA objects
     image_paths = load_images(args["image_file"])
     imageQAs = [ImageQA(image_path) for image_path in image_paths]
@@ -296,27 +321,5 @@ def create_composite_image(imageQAs):
     
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--model-path", type=str, default="liuhaotian/llava-v1.5-7b")
-    parser.add_argument("--model-base", type=str, default=None)
-    parser.add_argument("--image-file", type=str, required=True)
-    parser.add_argument("--device", type=str, default="cuda")
-    parser.add_argument("--conv-mode", type=str, default=None)
-    parser.add_argument("--temperature", type=float, default=0) # Original default is 0.2
-    parser.add_argument("--max-new-tokens", type=int, default=512)
-    parser.add_argument("--load-8bit", action="store_true")
-    parser.add_argument("--load-4bit", action="store_true")
-    parser.add_argument("--debug", action="store_true") # Show the dialogue as the model sees it
-    
-    # Choose at least one output method
-    #  --verbose           CLI output
-    #  --composite_output  Create a composite image
-    #  --csv_output        Save to a CSV
-    parser.add_argument("--verbose", action="store_true", help="Set true to output the dialogue as it is generated")
-    parser.add_argument("--composite_output", type=str, help="The path of the composite output image", default=None)
-    parser.add_argument("--csv_output", type=str, help="The path of the output csv", default=None)
-    
-    args = parser.parse_args()
-    args_dict = {key.replace('-', '_'): value for key, value in vars(args).items()}
-
-    main(args_dict)
+    load_model()
+    main()
