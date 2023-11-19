@@ -52,11 +52,11 @@ class ImageQA:
         self.image_tensor = None
         self.questions = {"Section" : Q_and_A("Which supermarket section would have this product?"),
                           "Package" : Q_and_A("What type of packaging is it in?"),
-                          #"Facing" : Q_and_A("Which face of this product are you looking at?"),
+                          "Facing" : Q_and_A("Which face of this product are you looking at?"),
                           "Brand" : Q_and_A("What brand is it?"),
                           "Product" : Q_and_A("What base type of product is it?"),
-                          "Type" : Q_and_A("What flavor, type, or variant is it?"),}
-                          #"Size" : Q_and_A("What size information can you read on the label?"),}
+                          "Type" : Q_and_A("What flavor, type, or variant is it?"),
+                          "Size" : Q_and_A("What size information can you read on the label?"),}
                           #"Nutrition" : Q_and_A("What nutritional information can you read?"),
             
         # Append a message to the first question to encourage short answers and accurate answers

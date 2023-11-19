@@ -5,6 +5,7 @@
 import argparse
 import csv
 import os
+from string_utils import most_common_string, find_min_average_distance_word
 
 parser = argparse.ArgumentParser()
 parser.add_argument("reference_images", type=str, action="store", help="The path to fv_ablt_test")
@@ -35,5 +36,14 @@ for UPC in UPCs:
 
 # De-collate the decsriptions
 for UPC, product_descriptions in UPCs.items():
-    for i in range(len(product_descriptions[0])):
-        print([x[i] for x in product_descriptions])
+    if not product_descriptions:
+        continue
+    unified_description = []
+    for i in range(len(product_descriptions[0]) - 1):
+        strings = [x[i].lower() for x in product_descriptions]
+        
+        #selected_word = most_common_string(strings)
+        selected_word = find_min_average_distance_word(strings)
+        
+        unified_description.append(selected_word)
+    print(unified_description)
