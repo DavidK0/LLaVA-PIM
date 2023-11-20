@@ -9,6 +9,7 @@ from string_utils import most_common_string, find_min_average_distance_word
 
 parser = argparse.ArgumentParser()
 parser.add_argument("reference_images", type=str, action="store", help="The path to fv_ablt_test")
+parser.add_argument("--run-name", type=str, action="store", help="The name of the run from which the descriptions came")
 args = parser.parse_args()
 
 # Read UPCs
@@ -30,7 +31,7 @@ def read_csv(file, skip_header):
 
 # Read the .csv files
 for UPC in UPCs:
-    csv_path = os.path.join(args.reference_images, UPC, f"{UPC}.csv")
+    csv_path = os.path.join(args.reference_images, UPC, f"{args.run_name}_{UPC}.csv")
     if os.path.isfile(csv_path):
         UPCs[UPC] = [row[1:] for row in read_csv(csv_path, skip_header=True)]
 
@@ -42,8 +43,8 @@ for UPC, product_descriptions in UPCs.items():
     for i in range(len(product_descriptions[0]) - 1):
         strings = [x[i].lower() for x in product_descriptions]
         
-        #selected_word = most_common_string(strings)
-        selected_word = find_min_average_distance_word(strings)
+        selected_word = most_common_string(strings)
+        #selected_word = find_min_average_distance_word(strings)
         
         unified_description.append(selected_word)
     print(unified_description)
