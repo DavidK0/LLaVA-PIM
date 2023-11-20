@@ -1,5 +1,8 @@
+# This file holds a few methods that are reused elsewhere.
+
 import itertools
 import string
+import csv
 from tqdm import tqdm
 
 def most_common_string(strings):
@@ -55,9 +58,7 @@ def find_min_average_distance_word(word_list):
     min_total_distance = float('inf')
     best_word = None
     
-    #print(len(candidates))
     for candidate in tqdm(candidates):
-        #print(candidate)
         total_distance = sum(levenshtein_distance(candidate, word) for word in word_list)
 
         if total_distance < min_total_distance:
@@ -88,3 +89,26 @@ def levenshtein_distance(s1, s2):
         previous_row = current_row
     
     return previous_row[-1]
+
+def read_csv(file, has_header=False):
+    """Returns the contents of a .csv file"""
+    header = None
+    data = []
+    with open(file, newline='') as csvfile:
+        csv_reader = csv.reader(csvfile)
+        for row in csv_reader:
+            if has_header:
+                has_header = False
+                header = row
+                continue
+            data.append(row)
+    return header, data
+
+def save_csv(csv_path, data, header):
+    """Saves data to a .csv with an optional header"""
+    with open(csv_path, mode='w', newline='') as file:
+        csv_writer = csv.writer(file)
+        if header:
+            csv_writer.writerow(header)
+        for row in data:
+            csv_writer.writerow(row)
