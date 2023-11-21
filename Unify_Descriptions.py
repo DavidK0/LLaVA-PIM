@@ -5,11 +5,13 @@
 import argparse
 import csv
 import os
-from string_utils import most_common_string, find_min_average_distance_word
+from utils import most_common_string, find_min_average_distance_word, read_csv, save_csv
+from tqdm import tqdm
 
 parser = argparse.ArgumentParser()
 parser.add_argument("reference_images", type=str, action="store", help="The path to fv_ablt_test")
-parser.add_argument("--run-name", type=str, action="store", help="The name of the run from which the descriptions came")
+parser.add_argument("--run-name", type=str, action="store", help="The name of the run from which the descriptions came", required=True)
+parser.add_argument("--csv-output", type=str, action="store", help="The name of the output to save to. Defaults to run-name", default=None)
 args = parser.parse_args()
 
 # Read UPCs
@@ -17,34 +19,36 @@ UPCs = os.listdir(args.reference_images)
 UPCs = [UPC for UPC in UPCs if UPC[0] != '.']
 UPCs = dict.fromkeys(UPCs, None)
 
-def read_csv(file, skip_header):
-    """Returns the contents of a .csv file"""
-    data = []
-    with open(file, newline='') as csvfile:
-        csv_reader = csv.reader(csvfile)
-        for row in csv_reader:
-            if skip_header:
-                skip_header = False
-                continue
-            data.append(row)
-    return data
-
 # Read the .csv files
 for UPC in UPCs:
     csv_path = os.path.join(args.reference_images, UPC, f"{args.run_name}_{UPC}.csv")
     if os.path.isfile(csv_path):
-        UPCs[UPC] = [row[1:] for row in read_csv(csv_path, skip_header=True)]
+        header, data = read_csv(csv_path, has_header=True)
+        UPCs[UPC] = [row[1:] for row in data]
+
+if all([UPCs[UPC] == None for UPC in UPCs]):
+    raise Exception(f"No run with the name {args.run_name} found in {args.reference_images}")
 
 # De-collate the decsriptions
-for UPC, product_descriptions in UPCs.items():
+UPCs_unified_decscriptions = {}
+#print(len(UPCs))
+for UPC in tqdm(UPCs, position=0):
+    product_descriptions = UPCs[UPC]
     if not product_descriptions:
         continue
-    unified_description = []
-    for i in range(len(product_descriptions[0]) - 1):
+    
+    UPCs_unified_decscriptions[UPC] = [UPC]
+    
+    for i in tqdm(range(len(product_descriptions[0])), position=1, leave=False):
         strings = [x[i].lower() for x in product_descriptions]
         
-        selected_word = most_common_string(strings)
-        #selected_word = find_min_average_distance_word(strings)
+        #selected_word = most_common_string(strings)
+        selected_word = find_min_average_distance_word(strings)
         
-        unified_description.append(selected_word)
-    print(unified_description)
+        UPCs_unified_decscriptions[UPC].append(selected_word)
+
+# Save the results to a .csv
+csv_path = args.csv_output if args.csv_output else f"{args.run_name}.csv"
+data = [UPCs_unified_decscriptions[UPC] for UPC in UPCs]
+header = ["UPC"] + header[1:]
+save_csv(csv_path, data=data, header=header)

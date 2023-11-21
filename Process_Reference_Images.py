@@ -19,12 +19,11 @@ args = parser.parse_args()
 UPCs = os.listdir(args.reference_images)
 UPCs = [UPC for UPC in UPCs if UPC[0] != '.']
 
-#UPCs = UPCs[0:1]
-
 # Load model
 model_args = ["--model-path", args.model_path, "--load-8bit"]
 LLaVA.load_model(model_args)
 
+# Run inference on each UPC
 for UPC_index, UPC in enumerate(UPCs):
     progress = (UPC_index + 1) / len(UPCs)
     print(f"Processing Reference Images: {progress:.0%}")

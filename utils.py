@@ -58,7 +58,7 @@ def find_min_average_distance_word(word_list):
     min_total_distance = float('inf')
     best_word = None
     
-    for candidate in tqdm(candidates):
+    for candidate in tqdm(candidates, leave=False):
         total_distance = sum(levenshtein_distance(candidate, word) for word in word_list)
 
         if total_distance < min_total_distance:

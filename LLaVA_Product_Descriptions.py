@@ -34,6 +34,7 @@ from llava.mm_utils import (
     get_model_name_from_path, 
     KeywordsStoppingCriteria
 )
+from utils import save_csv
 
 # This gets appended to the first question
 IMAGEQA_SYSTEM_MESSAGE = " Be accurate but brief. Only answer with text from the image, or if you don't know the answer, say 'unknown' or 'none'."
@@ -236,21 +237,26 @@ def inference(args):
     
     # Save as CSV
     if args.csv_output:
-        with open(args.csv_output, mode='w', newline='') as file:
-            csv_writer = csv.writer(file)
-            
-            header = []
-            header.append("image")
-            for question in imageQAs[0].questions:
-                header.append(question)
-            csv_writer.writerow(header)
-            
-            for imageQA in imageQAs:
-                answers = [imageQA.image_path]
-                for question_key, Q_and_A in imageQA.questions.items():
-                    answers.append(Q_and_A.answer)
-                csv_writer.writerow(answers)
-        
+        save_results_to_csv(args.csv_output, imageQAs)
+    
+    # Return the results
+    return imageQAs
+
+def save_results_to_csv(csv_path, imageQAs):
+    header = []
+    header.append("image")
+    for question in imageQAs[0].questions:
+        header.append(question)
+
+    data = []
+    for imageQA in imageQAs:
+        answers = [os.path.basename(imageQA.image_path)]
+        for question_key, Q_and_A in imageQA.questions.items():
+            answers.append(Q_and_A.answer)
+        data.append(answers)
+
+    save_csv(csv_path, data=data, header=header)
+
 def create_composite_image(imageQAs):
     title_padding = 15
     title = IMAGEQA_SYSTEM_MESSAGE
