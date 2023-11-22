@@ -1,5 +1,4 @@
-# This script takes one argument:
-#  the path to fv_albt_test_11152023
+# This script takes three arguments.
 # This script will process those images and generate product descriptions for each one.
 # The product discriptions will be placed in .csv files in fv_albt_test_11152023
 

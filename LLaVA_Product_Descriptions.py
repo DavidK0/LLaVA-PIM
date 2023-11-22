@@ -52,12 +52,17 @@ class ImageQA:
         self.image = Image.open(self.image_path).convert('RGB')
         self.image_tensor = None
         self.questions = {"Section" : Q_and_A("Which supermarket section would have this product?"),
-                          "Package" : Q_and_A("What type of packaging is it in?"),
-                          "Facing" : Q_and_A("Which face of this product are you looking at?"),
+                          "Material" : Q_and_A("What material of packaging is it in?"),
+                          "Shape" : Q_and_A("What shape of packaging is it in?"),
+                          "Facing" : Q_and_A("Which side of this product are you looking at?"),
+                          "Color_Main" : Q_and_A("What is the primary color?"),
+                          "Color_Secondary" : Q_and_A("What is the secondary color?"),
+                          "Text" : Q_and_A("Yes or no: Is there any readable text?"),
                           "Brand" : Q_and_A("What brand is it?"),
                           "Product" : Q_and_A("What base type of product is it?"),
                           "Type" : Q_and_A("What flavor, type, or variant is it?"),
-                          "Size" : Q_and_A("What size information can you read on the label?"),}
+                          "Size" : Q_and_A("What size information can you read on the label?"),
+                          "Other" : Q_and_A("What other text can you read, if any?"),}
                           #"Nutrition" : Q_and_A("What nutritional information can you read?"),
             
         # Append a message to the first question to encourage short answers and accurate answers
@@ -201,7 +206,7 @@ def inference(args):
             # Decode the output and update the answer to the question
             outputs = tokenizer.decode(output_ids[0, input_ids.shape[1]:]).strip()
             conv.messages[-1][-1] = outputs
-            Q_and_A.answer = outputs[:-4]
+            Q_and_A.answer = outputs[:-4].lower()
         
         # Print the dialogue as it is actually seen by the model.
         if args.debug:
