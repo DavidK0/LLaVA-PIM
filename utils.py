@@ -90,6 +90,10 @@ def levenshtein_distance(s1, s2):
     
     return previous_row[-1]
 
+def normalized_edit_distance(s1, s2):
+    """Compute the NED between two strings"""
+    return levenshtein_distance(s1, s2) / max(len(s2), len(s2))
+
 def read_csv(file, has_header=False):
     """Returns the contents of a .csv file"""
     header = None

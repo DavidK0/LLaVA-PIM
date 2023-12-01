@@ -31,7 +31,6 @@ if all([UPCs[UPC] == None for UPC in UPCs]):
 
 # De-collate the decsriptions
 UPCs_unified_decscriptions = {}
-#print(len(UPCs))
 for UPC in tqdm(UPCs, position=0):
     product_descriptions = UPCs[UPC]
     if not product_descriptions:
@@ -42,8 +41,11 @@ for UPC in tqdm(UPCs, position=0):
     for i in tqdm(range(len(product_descriptions[0])), position=1, leave=False):
         strings = [x[i].lower() for x in product_descriptions]
         
-        #selected_word = most_common_string(strings)
-        selected_word = find_min_average_distance_word(strings)
+        # This assumes that number 3 and 8 benefit from the alternate aggregation method
+        if i == 3 or i == 8:
+            selected_word = find_min_average_distance_word(strings)
+        else:
+            selected_word = most_common_string(strings)
         
         UPCs_unified_decscriptions[UPC].append(selected_word)
 
