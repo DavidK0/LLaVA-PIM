@@ -50,9 +50,9 @@ def generate_candidate_words(word_list):
                 candidates.add(word[:i] + char + word[i + 1:])
     return set(candidates)
 
-def find_min_average_distance_word(word_list):
+def find_median_string(word_list):
     """
-    Find the word that has the minimum average Levenshtein distance to all words in the list.
+    Finds a new word that would have the minimum average Levenshtein distance to all words in the list.
     """
     candidates = generate_candidate_words(word_list)
     min_total_distance = float('inf')
@@ -66,6 +66,27 @@ def find_min_average_distance_word(word_list):
             best_word = candidate
 
     return best_word
+
+def find_min_average_distance_word(word_list):
+    """
+    Finds the word that has the minimum average Levenshtein distance to all words in the list.
+    """
+    min_total_distance = float('inf')
+    best_words = set()
+    
+    for candidate in tqdm(list(set(word_list)), leave=False):
+        total_distance = sum(levenshtein_distance(candidate, word) for word in word_list)
+
+        if total_distance < min_total_distance:
+            min_total_distance = total_distance
+            best_words = set([candidate])
+        elif total_distance == min_total_distance:
+            best_words.add(candidate)
+        
+    if len(best_words) > 1:
+        return find_median_string(best_words)
+    else:
+        return best_words[0]
 
 def levenshtein_distance(s1, s2):
     """

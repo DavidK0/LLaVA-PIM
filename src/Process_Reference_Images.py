@@ -10,9 +10,16 @@ import LLaVA_Product_Descriptions as LLaVA
 
 parser = argparse.ArgumentParser()
 parser.add_argument("reference_images", type=str, action="store", default=None)
-parser.add_argument("--model-path", type=str, action="store", default=None, required=True)
-parser.add_argument("--run-name", type=str, action="store", default=None, required=True)
+parser.add_argument("--output-dir", type=str, action="store", default=None, required=True)
+parser.add_argument("--model-path", type=str, action="store", default="liuhaotian/llava-v1.5-13b")
 args = parser.parse_args()
+
+# Check if output exists
+if os.path.exists(args.output_dir):
+    raise Exception(f"Folder '{args.output_dir}' already exists.")
+else:
+    print(f"Creating {args.output_dir}")
+    os.mkdir(args.output_dir)
 
 # Read UPCs
 UPCs = os.listdir(args.reference_images)
@@ -28,7 +35,7 @@ for UPC_index, UPC in enumerate(UPCs):
     print(f"Processing Reference Images: {progress:.0%}")
     
     image_paths = os.path.join(args.reference_images, UPC)
-    csv_path = os.path.join(args.reference_images, UPC, f"{args.run_name}_{UPC}.csv")
+    csv_path = os.path.join(args.output_dir, f"{UPC}.csv")
     
     inference_args = ["--image-file", image_paths, "--csv_output", csv_path]
     LLaVA.inference(inference_args)

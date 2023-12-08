@@ -44,8 +44,8 @@ reference_descriptions = {x[0] : x[1:] for x in reference_descriptions}
 _, input_descriptions = read_csv(args.input_descriptions, has_header=True)
 
 # Threshold constants
-DESCRIPTION_SIMILARITY_THRESHOLD = .27 # Scores less than this mean the VLM descriptions are unconfident
-CORE_DISTANCE_THRESHOLD = .18 # Distances greater than this means code from core is unconfident
+DESCRIPTION_SIMILARITY_THRESHOLD = 0.11  # Scores less than this mean the VLM descriptions are unconfident
+CORE_DISTANCE_THRESHOLD = 0.14 # Distances greater than this means code from core is unconfident
 
 def get_description_similarity(description1, description2, weights):
     """
@@ -73,7 +73,8 @@ def get_description_similarity(description1, description2, weights):
     return average_distance
 
 def classify(input_description, weights):
-    """Classifies the given input_description"""
+    """Classifies the given input_description. Returns two values, a UPC and the classification method).
+      The classification method is either "core" or "vlm". """
     
     label_id = os.path.splitext(os.path.basename(input_description[0]))[0]
     input_description = input_description[1:]
@@ -104,48 +105,61 @@ def classify(input_description, weights):
 
     # If core distance is low or description similarity is high, use the UPC that core gives
     min_distance = min(scores[0] for upc, scores in scores_list.items())
-    max_similarity = min(scores[0] for upc, scores in scores_list.items())
+    max_similarity = max(scores[1] for upc, scores in scores_list.items())
     
     if min_distance < CORE_DISTANCE_THRESHOLD or max_similarity > DESCRIPTION_SIMILARITY_THRESHOLD:
-        return  min(scores_list, key=lambda x: scores_list[x][0])
+        return  min(scores_list, key=lambda x: scores_list[x][0]), "core"
     else:
-        return min(scores_list, key=lambda x: scores_list[x][1])
+        return min(scores_list, key=lambda x: scores_list[x][1]), "vlm"
 
-def main(w=None):
-    weights = [0.3, 0.4, 0.1, 0.0, 0.8, 1.0, 1.4, 0.1, 0.9, 1.2, 0.8, 2.0]
+def main(weights, thresholds=None):
+    
     
     global DESCRIPTION_SIMILARITY_THRESHOLD, CORE_DISTANCE_THRESHOLD
-    if w:
-        DESCRIPTION_SIMILARITY_THRESHOLD = w[0]
-        CORE_DISTANCE_THRESHOLD = w[1]
+    if thresholds:
+        DESCRIPTION_SIMILARITY_THRESHOLD = thresholds[0]
+        CORE_DISTANCE_THRESHOLD = thresholds[1]
     
     answer_key = {}
     for row in pl_info:
         answer_key[row[label_id_index]] = row[code_from_user_index].rjust(12, '0')
     
     total_correct = 0
-    for input_description in tqdm(input_descriptions, leave=False):
-        predicted_UPC = classify(input_description, weights)
+    core_correct = [0, 0]
+    vlm_correct = [0, 0]
+    input_subset = input_descriptions[len(input_descriptions)//2:]
+    for input_description in tqdm(input_subset, leave=False):
+        predicted_UPC, classification_method = classify(input_description, weights)
         
         if label_id not in answer_key:
             raise Exception(f"{label_id} is not in the answer key")
         
-        gold_answer = answer_key[os.path.splitext(os.path.basename(input_description[0]))[0]]
-        #if gold_answer not in accuracy_per_UPC:
-        #    accuracy_per_UPC[gold_answer] = [0,0, []]
-        #accuracy_per_UPC[gold_answer][1] += 1
+        gold_UPC = answer_key[os.path.splitext(os.path.basename(input_description[0]))[0]]
         
-        if predicted_UPC == gold_answer:
+        if classification_method == "core":
+            core_correct[0] += 1
+        else:
+            vlm_correct[0] += 1
+        
+        if predicted_UPC == gold_UPC:
             total_correct += 1
+            if classification_method == "core":
+                core_correct[1] += 1
+            else:
+                vlm_correct[1] += 1
+        else:
+            if classification_method == "vlm":
+                print(input_description, gold_UPC, predicted_UPC)
     
-    accuracy = total_correct/len(input_descriptions)
-    print(f"Accuracy: {accuracy:.1%}")
-    return accuracy
+    print(f"Accuracy: {total_correct}/{len(input_subset)} ({total_correct/len(input_subset):.1%})")
+    print(f"Core accuracy: {core_correct[1]}/{core_correct[0]} ({core_correct[1]/core_correct[0]:.1%})")
+    print(f"VLM accuracy: {vlm_correct[1]}/{vlm_correct[0]} ({vlm_correct[1]/vlm_correct[0]:.1%})")
+    return total_correct/len(input_subset)
 
-def optimize_weight(index, weights, step=0.1, min_val=0, max_val=1):
+def optimize_weight(index, weights, step=0.03, min_val=0, max_val=2):
     best_accuracy = 0
     best_weight = weights[index]
-    for w in [min_val + step * i for i in range(int((max_val - min_val) / step) + 1)]:
+    for w in [max_val - step * i for i in range(int((max_val - min_val) / step) + 1)]:
         weights[index] = w
         print(weights)
         
@@ -155,24 +169,24 @@ def optimize_weight(index, weights, step=0.1, min_val=0, max_val=1):
             best_weight = w
     return best_weight
 
-def grid_search(step_size, start=0, stop=1):
+def grid_search(weights, step_size, start=0, stop=1):
     best_accuracy = 0
-    best_weights = [start, start]
+    best_thresholds = [start, start]
     num_steps = int((stop - start) / step_size) + 1  # Calculate the number of steps based on the range and step size
     accuracy_grid = np.zeros((num_steps, num_steps))
 
     for w1 in range(num_steps):  # Iterate from 0 to num_steps
         for w2 in range(num_steps):
-            weights = [start + w1 * step_size, start + w2 * step_size]
-            print(weights)
-            accuracy = main(weights)
+            thresholds = [start + w1 * step_size, start + w2 * step_size]
+            print(thresholds)
+            accuracy = main(weights, thresholds)
             accuracy_grid[w1, w2] = accuracy
             if accuracy > best_accuracy:
                 print("new best found")
                 best_accuracy = accuracy
-                best_weights = weights
+                best_thresholds = thresholds
 
-    return best_weights, best_accuracy, accuracy_grid
+    return best_thresholds, best_accuracy, accuracy_grid
 
 def plot_accuracy_grid(accuracy_grid, step_size):
     plt.figure(figsize=(8, 6))
@@ -193,21 +207,30 @@ def plot_accuracy_grid(accuracy_grid, step_size):
     plt.savefig("plot.jpg", bbox_inches='tight')
     
 if __name__ == "__main__":
-    #weights = [1 for x in range(len(header) - 1)]
+    weights = [1 for x in range(len(input_descriptions[0]) - 1)]
     #weights = [0.0, 0.2, 0.0, 0.6, 0.4, 0.6, 0.4] # Vote 7q
     #weights = [0.1, 0.6, 0.0, 1.3, 0.5, 0.7, 0.3] # Levenstein 7q
-    #weights = [0.8, 0.2, 0.6, 0.6, 1.8, 1.0, 0.0, 1.0, 0.0, 1.0, 1.0, 2.0] # Vote 12q
-    #weights = [0.0, 0.4, 0.7, 1.1, 1.0, 1.0, 0.0, 1.0, 1.0, 0.4, 0.7, 0.5] # Levenstein 12q
+    #weights = [2.0, 1.73, 1.58, 2.0, 1.55, 1.94, 2.0, 0.71, 2.0, 1.13, 1.04, 0.68] # Vote 12q
+    #weights = [2.0, 2.0, 0.41000000000000014, 2.0, 1.6400000000000001, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 0.020000000000000018] # Vote 12q (first half)
+    weights = [0.05, 0.2, 1.07, 0.89, 1.19, 0.71, 2.0, 0.74, 0.77, 1.07, 2.0, 0.14] # Levenstein 12q (first half)
+    #weights = [1.44, 0.0, 0.03, 0.72, 0.63, 0.09, 0.0, 0.0, 0.45, 0.39, 0.51, 0.06] # Levenstein 12q (all halves)
     #weights = [0.3, 0.4, 0.1, 0.0, 0.8, 1.0, 1.4, 0.1, 0.9, 1.2, 0.8, 2.0] # Levenstein 12q candidates
+    #weights = [1.5, 1.5, 0.81, 1.5, 0.78, 0.48, 0.41999999999999993, 0.0, 0.66, 0.41999999999999993, 0.8400000000000001, 0.09000000000000008] #combo2
+    #weights = [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 0.53, 2.0, 2.0, 2.0, 2.0, 0.22999999999999998] # combo2 first half
     
-    #weights = [1,1]
-    accuracy = main()
+    accuracy = main(weights)
+    sys.exit()
     
-    #step_size = .03
-    #best_weights, best_accuracy, accuracy_grid = grid_search(step_size=step_size,start=.5/4., stop = 1./3.)
-    #print(f"Best weights: {best_weights}, Best accuracy: {best_accuracy}")
-    #plot_accuracy_grid(accuracy_grid, step_size)
+    step_size = .01
+    best_thresholds, best_accuracy, accuracy_grid = grid_search(weights, step_size=step_size,start=.05, stop = .2)
+    print(f"Best thresholds: {best_thresholds}, Best accuracy: {best_accuracy}")
+    plot_accuracy_grid(accuracy_grid, step_size)
+    
+    sys.exit()
     
     # Use this to classify many times to find the ideal weights
-    #for i in range(len(weights)):
-    #    weights[i] = optimize_weight(i, weights)
+    for i in range(len(weights)):
+        weights[i] = optimize_weight(i, weights)
+    
+    print(f"Best weights: {weights}")
+    accuracy = main(weights)

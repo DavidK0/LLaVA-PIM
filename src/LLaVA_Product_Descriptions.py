@@ -54,15 +54,16 @@ class ImageQA:
         self.questions = {"Section" : Q_and_A("Which supermarket section would have this product?"),
                           "Material" : Q_and_A("What material of packaging is it in?"),
                           "Shape" : Q_and_A("What shape of packaging is it in?"),
-                          "Facing" : Q_and_A("Which side of this product are you looking at?"),
+                          #"Facing" : Q_and_A("Which side of this product are you looking at?"),
                           "Color_Main" : Q_and_A("What is the primary color?"),
                           "Color_Secondary" : Q_and_A("What is the secondary color?"),
-                          "Text" : Q_and_A("Yes or no: Is there any readable text?"),
+                          #"Text" : Q_and_A("Yes or no: Is there any readable text?"),
                           "Brand" : Q_and_A("What brand is it?"),
                           "Product" : Q_and_A("What base type of product is it?"),
                           "Type" : Q_and_A("What flavor, type, or variant is it?"),
-                          "Size" : Q_and_A("What size information can you read on the label?"),
-                          "Other" : Q_and_A("What other text can you read, if any?"),}
+                          "Size" : Q_and_A("Estimate the size, including units."),
+                          "Other text" : Q_and_A("Besides the text you already mentioned, what other text is there, if any?"),
+                          "Distinct feature" : Q_and_A("What distinct visual features are there, if any?"),}
                           #"Nutrition" : Q_and_A("What nutritional information can you read?"),
             
         # Append a message to the first question to encourage short answers and accurate answers
@@ -102,7 +103,7 @@ def load_model(args = None):
     parser.add_argument("--conv-mode", type=str, default=None)
     parser.add_argument("--load-8bit", action="store_true")
     parser.add_argument("--load-4bit", action="store_true")
-    args = parser.parse_args(args)
+    args = parser.parse_known_args(args)[0]
     
     global tokenizer, model, image_processor, roles, conv_mode
 
@@ -128,7 +129,7 @@ def load_model(args = None):
 
     roles = ('user', 'assistant') if "mpt" in model_name.lower() else conv_templates[conv_mode].roles
 
-def inference(args):
+def inference(args = None):
     """Run inference using the previously loaded model"""
     parser = argparse.ArgumentParser()
     parser.add_argument("--image-file", type=str, required=True)
@@ -143,12 +144,13 @@ def inference(args):
     parser.add_argument("--verbose", action="store_true", help="Set true to output the dialogue as it is generated")
     parser.add_argument("--composite_output", type=str, help="The path of the composite output image", default=None)
     parser.add_argument("--csv_output", type=str, help="The path of the output csv", default=None)
-    args = parser.parse_args(args)
+    args = parser.parse_known_args(args)[0]
 
     # Create imageQA objects
     image_paths = load_images(args.image_file)
     imageQAs = [ImageQA(image_path) for image_path in image_paths]
     ImageQA.process_images(imageQAs, image_processor, model)
+    print(f"num imageQAs: {len(imageQAs)}")
     
     image_load_time = time.time()
     print(f"Starting inference")
@@ -169,7 +171,8 @@ def inference(args):
             question_counter += 1
             progress = f"{question_counter/num_questions:.0%}"
             image_name = os.path.basename(imageQA.image_path)
-            print(f"{progress} {image_name} Asking question {question_index+1} of {len(imageQA.questions)}", end = "\r")
+            progress_text = f"{progress} {image_name} Asking question {question_index+1} of {len(imageQA.questions)}".ljust(60)
+            print(progress_text, end = "\r")
             
             question_text = Q_and_A.question
             

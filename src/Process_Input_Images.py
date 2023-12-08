@@ -23,14 +23,18 @@ for root, dirs, files in os.walk(args.images_path):
             folders_with_images.add(root)
             break  # Once an image is found, move to the next directory
 
+print(folders_with_images)
+
 # Load model
 model_args = ["--model-path", args.model_path, "--load-8bit"]
 LLaVA.load_model(model_args)
 
 # Run inference
 imageQAs = []
-for folder in folders_with_images:
+for folder in list(folders_with_images)[1:]:
     inference_args = ["--image-file", folder]
-    imageQAs.extend(LLaVA.inference(inference_args))
+    inference_result = LLaVA.inference(inference_args)
+    print(len(inference_result))
+    imageQAs.extend(inference_result)
 
 LLaVA.save_results_to_csv(args.csv_output,imageQAs)
