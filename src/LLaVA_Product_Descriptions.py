@@ -93,8 +93,7 @@ def load_images(image_file):
     
     return image_paths
 
-tokenizer, model, image_processor, conv_mode = None, None, None, None
-def load_model(args = None):
+def load_model(args):
     """Load an model from the given arguments"""
     parser = argparse.ArgumentParser()
     parser.add_argument("--model-path", type=str, default="liuhaotian/llava-v1.5-7b")
@@ -105,7 +104,7 @@ def load_model(args = None):
     parser.add_argument("--load-4bit", action="store_true")
     args = parser.parse_known_args(args)[0]
     
-    global tokenizer, model, image_processor, roles, conv_mode
+    global tokenizer, model, image_processor, conv_mode
 
     disable_torch_init()
 
@@ -126,10 +125,11 @@ def load_model(args = None):
     if args.conv_mode is not None and conv_mode != args.conv_mode:
         print('[WARNING] the auto inferred conversation mode is {}, while `--conv-mode` is {}, using {}'.format(conv_mode, args.conv_mode, args.conv_mode))
         conv_mode = args.conv_mode
+    
+    return tokenizer, model, image_processor, conv_mode
+    #roles = ('user', 'assistant') if "mpt" in model_name.lower() else conv_templates[conv_mode].roles
 
-    roles = ('user', 'assistant') if "mpt" in model_name.lower() else conv_templates[conv_mode].roles
-
-def inference(args = None):
+def inference(args, tokenizer, model, image_processor, conv_mode):
     """Run inference using the previously loaded model"""
     parser = argparse.ArgumentParser()
     parser.add_argument("--image-file", type=str, required=True)
@@ -150,10 +150,12 @@ def inference(args = None):
     image_paths = load_images(args.image_file)
     imageQAs = [ImageQA(image_path) for image_path in image_paths]
     ImageQA.process_images(imageQAs, image_processor, model)
-    print(f"num imageQAs: {len(imageQAs)}")
+    #print(f"num imageQAs: {len(imageQAs)}")
     
     image_load_time = time.time()
-    print(f"Starting inference")
+    
+    if args.verbose:
+        print(f"Starting inference")
     
     num_questions = sum([len(imageQA.questions) for imageQA in imageQAs])
     question_counter = 0
@@ -230,12 +232,13 @@ def inference(args = None):
     # Time tracking
     end_time = time.time()
     total_time = get_elapsed_time(image_load_time, end_time)
-    print(f"\nTotal inference time: {total_time:.2f} seconds")
-    if len(imageQAs) > 1:
-        time_per_image = total_time / len(imageQAs)
-        print(f"Inference time per image: {time_per_image:.2f} seconds")
-    time_per_question = total_time / sum([len(x.questions) for x in imageQAs])
-    print(f"Inference time per question: {time_per_question:.2f} seconds")
+    if args.verbose:
+        print(f"\nTotal inference time: {total_time:.2f} seconds")
+        if len(imageQAs) > 1:
+            time_per_image = total_time / len(imageQAs)
+            print(f"Inference time per image: {time_per_image:.2f} seconds")
+        time_per_question = total_time / sum([len(x.questions) for x in imageQAs])
+        print(f"Inference time per question: {time_per_question:.2f} seconds")
     
     # Save as composite image
     if args.composite_output:
@@ -334,5 +337,5 @@ def create_composite_image(imageQAs):
     return composite_image
     
 if __name__ == "__main__":
-    load_model()
-    inference()
+    inference_parts = load_model(args=None)
+    inference(args=None, *inference_parts)
