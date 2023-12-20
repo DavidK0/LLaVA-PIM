@@ -52,23 +52,24 @@ class ImageQA:
         self.image_path = image_path
         self.image = Image.open(self.image_path).convert('RGB')
         self.image_tensor = None
-        self.questions = {"Section" : Q_and_A("Which supermarket section would have this product?"),
-                          "Material" : Q_and_A("What material of packaging is it in?"),
-                          "Shape" : Q_and_A("What shape of packaging is it in?"),
+        self.questions = {"Section" : Q_and_A("tell me which supermarket section would have this product?"),
+                          "Material" : Q_and_A("tell me what material of packaging is this product in?"),
+                          "Shape" : Q_and_A("tell me what shape of packaging is this product in?"),
                           #"Facing" : Q_and_A("Which side of this product are you looking at?"),
-                          "Color_Main" : Q_and_A("What is the primary color?"),
-                          "Color_Secondary" : Q_and_A("What is the secondary color?"),
+                          "Color_Main" : Q_and_A("tell me what is the primary color of this product?"),
+                          "Color_Secondary" : Q_and_A("tell me what is the secondary color of this product?"),
                           #"Text" : Q_and_A("Yes or no: Is there any readable text?"),
-                          "Brand" : Q_and_A("What brand is it?"),
-                          "Product" : Q_and_A("What base type of product is it?"),
-                          "Type" : Q_and_A("What flavor, type, or variant is it?"),
-                          "Size" : Q_and_A("Estimate the size, including units."),
-                          "Other text" : Q_and_A("Besides the text you already mentioned, what other text is there, if any?"),
-                          "Distinct feature" : Q_and_A("What distinct visual features are there, if any?"),}
+                          "Brand" : Q_and_A("tell me what brand is this product?"),
+                          "Product" : Q_and_A("tell me what is the primary category of this product?"),
+                          "Type" : Q_and_A("tell me within its primary category, what flavor, type, or variant is this product?"),
+                          "Size" : Q_and_A("estimate the size of this product, including units."),
+
+                          "Distinct feature" : Q_and_A("tell me what is the most visually distinct feature about this product?"),}
+
                           #"Nutrition" : Q_and_A("What nutritional information can you read?"),
             
         # Append a message to the first question to encourage short answers and accurate answers
-        self.questions[next(iter(self.questions))].question += IMAGEQA_SYSTEM_MESSAGE
+        #self.questions[next(iter(self.questions))].question += IMAGEQA_SYSTEM_MESSAGE
 
     @staticmethod
     def process_images(imageQAs, image_processor, model):
@@ -90,8 +91,8 @@ def load_images(image_file):
     image_paths = [f for f in image_paths if f.lower().endswith(('.png', '.jpg', '.jpeg', '.gif', '.bmp'))]
     
     if not image_paths:
-        print(f"[WARNING] No image found at {image_file}")
         return []
+        #raise ValueError(f"No valid image files found in the specified directory or file: {image_file}")
     
     return image_paths
 
@@ -152,8 +153,6 @@ def inference(args, tokenizer, model, image_processor, conv_mode):
 
     # Create imageQA objects
     image_paths = load_images(args.image_file)
-    if not image_paths:
-        return
     imageQAs = [ImageQA(image_path) for image_path in image_paths]
     ImageQA.process_images(imageQAs, image_processor, model)
     #print(f"num imageQAs: {len(imageQAs)}")
@@ -167,12 +166,11 @@ def inference(args, tokenizer, model, image_processor, conv_mode):
     question_counter = 0
     
     for imageQA in imageQAs:
-        conv = conv_templates[conv_mode].copy() # Reset the conversation
-        
-        first_question = True # True if the first question has not been asked yet
         
         # Iterate over the keys to the question dictionary
         for question_index, question_key in enumerate(imageQA.questions):
+            conv = conv_templates[conv_mode].copy() # Reset the conversation
+        
             # Get the question
             Q_and_A = imageQA.questions[question_key]
             
@@ -182,15 +180,13 @@ def inference(args, tokenizer, model, image_processor, conv_mode):
             progress_text = f"{progress} {image_name} Asking question {question_index+1} of {len(imageQA.questions)}".ljust(60)
             print(progress_text, end = "\r")
             
-            question_text = Q_and_A.question
+            question_text = "Be accurate but use only a few words. Only answer with text from the image, or if you don't know the answer, say 'unknown' or 'none'. " + Q_and_A.question
             
             # Process the first message in a special way
-            if first_question:
-                if model.config.mm_use_im_start_end:
-                    question_text = DEFAULT_IM_START_TOKEN + DEFAULT_IMAGE_TOKEN + DEFAULT_IM_END_TOKEN + '\n' + question_text
-                else:
-                    question_text = DEFAULT_IMAGE_TOKEN  + question_text
-                first_question = False
+            if model.config.mm_use_im_start_end:
+                question_text = DEFAULT_IM_START_TOKEN + DEFAULT_IMAGE_TOKEN + DEFAULT_IM_END_TOKEN + '\n' + question_text
+            else:
+                question_text = DEFAULT_IMAGE_TOKEN  + question_text
             
             # Add update the conversation
             conv.append_message(conv.roles[0], question_text)

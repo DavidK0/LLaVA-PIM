@@ -35,6 +35,12 @@ upc_whitelist = []
 if args.upc_whitelist:
     with open(args.upc_whitelist) as file:
         upc_whitelist = [line.strip() for line in file]
+    
+    # Skip UPCs that are not in the whitelist
+    UPCs = [UPC for UPC in UPCs if UPC in upc_whitelist]
+
+# Skip UPCs for which a product description .csv already exists
+UPCs = [UPC for UPC in UPCs if not os.path.isfile(os.path.join(args.output_dir, f"{UPC}.csv"))]
 
 # Load model
 model_args = ["--model-path", args.model_path, "--load-8bit"]
@@ -47,14 +53,6 @@ for UPC_index, UPC in enumerate(tqdm(UPCs, position=2)):
     
     image_paths = os.path.join(args.reference_images, UPC)
     csv_path = os.path.join(args.output_dir, f"{UPC}.csv")
-    
-    # Skip UPCs for which a product description .csv already exists
-    if os.path.isfile(csv_path):
-        continue
-    
-    # If there is a whitelist and this UPC isn't on it, skip it
-    if upc_whitelist and UPC not in upc_whitelist:
-        continue
 
     inference_args = ["--image-file", image_paths, "--csv_output", csv_path]
     LLaVA.inference(inference_args, *inference_parts)
