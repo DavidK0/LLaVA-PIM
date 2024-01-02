@@ -58,7 +58,7 @@ def find_median_string(word_list):
     min_total_distance = float('inf')
     best_word = None
     
-    for candidate in tqdm(candidates, leave=False):
+    for candidate in candidates:
         total_distance = sum(levenshtein_distance(candidate, word) for word in word_list)
 
         if total_distance < min_total_distance:
@@ -74,7 +74,7 @@ def find_min_average_distance_word(word_list):
     min_total_distance = float('inf')
     best_words = set()
     
-    for candidate in tqdm(list(set(word_list)), leave=False):
+    for candidate in list(set(word_list)):
         total_distance = sum(levenshtein_distance(candidate, word) for word in word_list)
 
         if total_distance < min_total_distance:
@@ -86,7 +86,7 @@ def find_min_average_distance_word(word_list):
     if len(best_words) > 1:
         return find_median_string(best_words)
     else:
-        return best_words[0]
+        return list(best_words)[0]
 
 def levenshtein_distance(s1, s2):
     """
@@ -113,7 +113,7 @@ def levenshtein_distance(s1, s2):
 
 def normalized_edit_distance(s1, s2):
     """Compute the NED between two strings"""
-    return levenshtein_distance(s1, s2) / max(len(s2), len(s2))
+    return levenshtein_distance(s1, s2) / max(len(s1), len(s2))
 
 def read_csv(file, has_header=False):
     """Returns the contents of a .csv file"""
