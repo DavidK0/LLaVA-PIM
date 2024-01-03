@@ -6,30 +6,29 @@ In this repo I use the vision-language model LLaVA to extract product informatio
 There are two ways to use this: with batch-inference (faster but limited to llava-7b) or without batch-inference (slower but can use llava-13b).
 
 ## Product descriptions with batch-inference
-1. Clone this repo `git clone https://github.com/DavidK0/LLaVA-PIM.git`
-2. Follow the instruction for setting up [the dev branch of LLaVA](https://github.com/haotian-liu/LLaVA/tree/develop)
-3. Copy two files to LLaVA: `cp LLaVA-PIM/src/batch-inference/Custom_Batch_Inference.py LLaVA/` and `cp LLaVA-PIM/src/batch-inference/Make_Questions_jsonl_long.py LLaVA/`
-4. `cd LLaVA`
-5. Get the product descriptions with `python Make_Questions_jsonl_long.py input_dir output_dir`. The input_dir should hold one folder for each product, and images of those products go in their respective folders.
+1. Follow the instruction for setting up [the dev branch of LLaVA](https://github.com/haotian-liu/LLaVA/tree/develop)
+2. Copy two files to LLaVA: `cp LLaVA-PIM/src/batch-inference/Custom_Batch_Inference.py LLaVA/` and `cp LLaVA-PIM/src/batch-inference/Make_Questions_jsonl_long.py LLaVA/`
+3. `cd LLaVA`
+4. Get the product descriptions with `python Make_Questions_jsonl_long.py input_dir output_dir`. The input_dir should hold one folder for each product, and images of those products go in their respective folders.
 5. Unify the product descriptions into a single description per product with `python LLaVA-PIM/src/batch-inference/Unify_Batch_Descriptions.py input_dir output_file` where input_dir is the output_dir from the previous step.
 
 ## Product descriptions without batched-inference
-1. Clone this repo `git clone https://github.com/DavidK0/LLaVA-PIM.git`
-2. Follow the instruction for setting up [the main branch of LLaVA](https://github.com/haotian-liu/LLaVA/)
-3. `cd LLaVA-PIM`
-4. Get the product descriptions with `python src/non_batch-inference/Process_Images.py input_dir output_dir'`. The input_dir should hold one folder for each product, and images of those products go in their respective folders.
-5. Unify the product descriptions into a single description per product with `python src/non_batch-inference/Unify_Descriptions.py input_dir output_file` where input_dir is the output_dir from the previous step.
+1. Follow the instruction for setting up [the main branch of LLaVA](https://github.com/haotian-liu/LLaVA/)
+2. `cd LLaVA-PIM`
+3. Get the product descriptions with `python src/non_batch-inference/Process_Images.py input_dir output_dir'`. The input_dir should hold one folder for each product, and images of those products go in their respective folders.
+4. Unify the product descriptions into a single description per product with `python src/non_batch-inference/Unify_Descriptions.py input_dir output_file` where input_dir is the output_dir from the previous step.
 
 ## Product descriptions for a single image or product
-This doesn't work yet, but in theory you could run inference on a single image or a directory, with something like
 This is not intended to be used for later classifying products.
-1. Clone this repo `git clone https://github.com/DavidK0/LLaVA-PIM.git`
-2. Follow the instruction for setting up [the main branch of LLaVA](https://github.com/haotian-liu/LLaVA/)
-3. `cd LLaVA-PIM`
-4. Get the product descriptions with `python src/LLaVA_Product_Descriptions.py --model-path liuhaotian/llava-v1.5-13b --image-file input_file_or_dir --load-8bit`.  Pick one of the three output methods (`--verobse`, `--composite-output`, or `--csv-output`) The input should be a single images or folder of images.
+1. Follow the instruction for setting up [the main branch of LLaVA](https://github.com/haotian-liu/LLaVA/)
+2. `cd LLaVA-PIM`
+3. Get the product descriptions with `python src/LLaVA_Product_Descriptions.py --model-path liuhaotian/llava-v1.5-13b --image-file input_file_or_dir --load-8bit`.  Pick one of the three output methods (`--verobse`, `--composite-output`, or `--csv-output`) The input should be a single images or folder of images.
 
 ## Classifying from product descriptions
 Regardless of if you used batch-inference or not, the output_file will hold all the product descriptions in .jsonl format. Use `python LLaVA-PIM/src/Classify_Products.py reference_descriptions input_descriptions pl_info output` to get the description of a new image or images and compare them against the previously generated and unified descriptions. reference_descriptions and input_descriptions are the product descriptions in .jsonl files generated on previous steps.
+
+## Long versus Short
+Both the batched and non-batched versions have long and short sub-version. 'Long' refers to the fact that the prompts will always include answers to previously asked questions. 'Short' refers to the fact the those prompts will be shortened to just the current question. By default the long version is used, and there is no argument for changing it.
 
 # Evaluation
 In this section I will show how well the system performs by showing evauliation metrics, and compare it to arcface.
