@@ -4,22 +4,13 @@ import json
 import shutil
 import argparse
 
-# # Navigate to where the 'develop' branch of the LLaVA repo is stored
-#current_script = os.path.abspath(__file__)
-#parent_directory = os.path.dirname(current_script)
-#path_root = os.path.abspath(os.path.join(parent_directory, "..", "..", "LLaVA-Dev"))
-#sys.path[0] = path_root
-#print(sys.path)
-##sys.path.append(path_root)
-## Import the dev batch inference script
-#import LLaVA.llava.eval.model_vqa_batch as llava_batch_inference
-import Custom_Batch_Inference
+import llava.eval.model_vqa_batch as llava_batch_inference
 
 parser = argparse.ArgumentParser()
 parser.add_argument("reference_images", type=str, action="store", default=None)
 parser.add_argument("output_dir", type=str, action="store", default=None)
+parser.add_argument("--existing_descriptions", type=str, action="store", required=False, default=None)
 args = parser.parse_args()
-
 
 # Load image paths
 image_paths = []
@@ -40,10 +31,16 @@ image_folder = os.path.join(args.output_dir, "images")
 if not os.path.exists(image_folder):
     os.makedirs(image_folder)
 
+# Check for already processed upcs
+processed_upcs = [file.split(".")[0] for file in os.listdir(args.existing_descriptions)]
+
 # Flatten images
 image_extensions = {'.png', '.jpg', '.jpeg', '.gif', '.bmp'}
 for root, dirs, files in os.walk(args.reference_images):
     for file in files:
+        upc = os.path.basename(file).split(".")[0]
+        if upc in processed_upcs:
+            continue
         if file.lower().endswith(tuple(image_extensions)):
             source_path = os.path.join(root, file)
             destination_path = os.path.join(image_folder, file)
@@ -54,52 +51,31 @@ questions = ["Tell me, which supermarket section would have this product?",
              "Tell me, what material of packaging is this product in?",
              "Tell me, what shape of packaging is this product in?",
              "Tell me, what is the primary color of this product?",
-             f"Tell me, what is the secondary color of this product?",
+             "Tell me, what is the secondary color of this product?",
              "Tell me, what brand is this product?",
              "Tell me, what is the primary category of this product?",
              "Tell me, within its primary category, what flavor, type, or variant is this product?",
              "Estimate the size of this product, including units.",
              "Tell me, what is the most visually distinct feature about this product?"]
 
-
 for question_index, question in enumerate(questions):
     question_file = f"{args.output_dir}_question_{question_index}.jsonl"
-    question_file_path = os.path.join(args.output_dir, question_file)
-    
+    question_file_path = os.path.join(args.output_dir, question_file)    
     
     answer_file = f"{args.output_dir}_answer_{question_index}.jsonl"
     answer_file_path = os.path.join(args.output_dir, answer_file)
     
+    print(f"{question_file_path} exists: {os.path.isfile(question_file_path)}")
     if not os.path.isfile(question_file_path):
-        # Get previous question/answers
-        previous_convos = []
-        if question_index > 0:
-            previous_answer_file = f"{args.output_dir}_answer_{question_index - 1}.jsonl"
-            previous_answer_file_path = os.path.join(args.output_dir, previous_answer_file)
-            
-            conversations = [json.loads(line) for line in open(previous_answer_file)]
-            for conversation in conversations:
-                question = conversation["prompt"]
-                answer = conversation["text"]
-                previous_convos[conversation["image"]] = question + [answer]
-                
         
         # Create the next questions file
         with open(question_file_path, "w") as file:
             question_counter = 0
             for image_path in image_paths:
-                image_name = os.path.basename(image_path)
-                
-                if previous_convos:
-                    text = previous_convos[image_name] + [question]
-                else:
-                    text = [question]
-                
                 file.write(json.dumps({"question_id": question_counter,
-                                       "image": image_name,
-                                       "system_message": system_message,
-                                       "text": text,
-                                       "category": "conv"}) + "\n",)
+                                       "image": os.path.basename(image_path),
+                                       "text": system_message + " " + question,
+                                       "category": "conv"}) + "\n")
                 question_counter += 1
         
         # Execute batch inference with the questions file
@@ -119,10 +95,8 @@ for question_index, question in enumerate(questions):
         parser.add_argument("--batch_size", type=int, default=1)
         parser.add_argument("--num_workers", type=int, default=4)
         print(image_folder, question_file_path)
-        args = ["--model-path", "liuhaotian/llava-v1.5-7b", "--image-folder", image_folder, "--question-file", question_file_path, "--answers-file", answer_file_path, "--temperature", "0", "--batch_size", "5"]
-        batch_inference_args = parser.parse_args(args)
+        batch_inference_args = ["--model-path", "liuhaotian/llava-v1.5-13b", "--image-folder", image_folder, "--question-file", question_file_path, "--answers-file", answer_file_path, "--temperature", "0", "--batch_size", "1"]
+        batch_inference_args = parser.parse_args(batch_inference_args)
         
-        Custom_Batch_Inference.eval_model(batch_inference_args)
-    sys.exit()
-
+        llava_batch_inference.eval_model(batch_inference_args)
 

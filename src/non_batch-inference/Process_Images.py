@@ -8,11 +8,11 @@ import time
 
 from tqdm import tqdm
 
-import LLaVA_Product_Descriptions as LLaVA
+import LLaVA_Product_Descriptions_long as LLaVA
 
 parser = argparse.ArgumentParser()
 parser.add_argument("reference_images", type=str, action="store", default=None)
-parser.add_argument("--output-dir", type=str, action="store", default=None, required=True)
+parser.add_argument("output-dir", type=str, action="store", default=None)
 parser.add_argument("--model-path", type=str, action="store", default="liuhaotian/llava-v1.5-13b")
 parser.add_argument("--upc-whitelist", type=str, action="store", required=False, default=None, help="An optional textfile of allowed UPCs. Useful when splitting a large task across multiple machines")
 args = parser.parse_args()

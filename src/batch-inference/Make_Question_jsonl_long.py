@@ -5,14 +5,15 @@ import shutil
 import argparse
 
 # # Navigate to where the 'develop' branch of the LLaVA repo is stored
-current_script = os.path.abspath(__file__)
-parent_directory = os.path.dirname(current_script)
-path_root = os.path.abspath(os.path.join(parent_directory, "..", "..", "LLaVA-Dev"))
-sys.path[0] = path_root
-print(sys.path)
-#sys.path.append(path_root)
-# Import the dev batch inference script
-import LLaVA.llava.eval.model_vqa_batch as llava_batch_inference
+#current_script = os.path.abspath(__file__)
+#parent_directory = os.path.dirname(current_script)
+#path_root = os.path.abspath(os.path.join(parent_directory, "..", "..", "LLaVA-Dev"))
+#sys.path[0] = path_root
+#print(sys.path)
+##sys.path.append(path_root)
+## Import the dev batch inference script
+#import LLaVA.llava.eval.model_vqa_batch as llava_batch_inference
+import Custom_Batch_Inference
 
 parser = argparse.ArgumentParser()
 parser.add_argument("reference_images", type=str, action="store", default=None)
@@ -70,15 +71,35 @@ for question_index, question in enumerate(questions):
     answer_file_path = os.path.join(args.output_dir, answer_file)
     
     if not os.path.isfile(question_file_path):
+        # Get previous question/answers
+        previous_convos = []
+        if question_index > 0:
+            previous_answer_file = f"{args.output_dir}_answer_{question_index - 1}.jsonl"
+            previous_answer_file_path = os.path.join(args.output_dir, previous_answer_file)
+            
+            conversations = [json.loads(line) for line in open(previous_answer_file_path)]
+            for conversation in conversations:
+                question_ = conversation["prompt"]
+                answer = conversation["text"]
+                previous_convos.append(question_ + [answer])
+                
         
         # Create the next questions file
         with open(question_file_path, "w") as file:
             question_counter = 0
             for image_path in image_paths:
+                image_name = os.path.basename(image_path)
+                
+                if previous_convos:
+                    text = previous_convos[question_counter] + [question]
+                else:
+                    text = [question]
+                
                 file.write(json.dumps({"question_id": question_counter,
-                                       "image": os.path.basename(image_path),
-                                       "text": system_message + " " + question,
-                                       "category": "conv"}) + "\n")
+                                       "image": image_name,
+                                       "system_message": system_message,
+                                       "text": text,
+                                       "category": "conv"}) + "\n",)
                 question_counter += 1
         
         # Execute batch inference with the questions file
@@ -98,10 +119,7 @@ for question_index, question in enumerate(questions):
         parser.add_argument("--batch_size", type=int, default=1)
         parser.add_argument("--num_workers", type=int, default=4)
         print(image_folder, question_file_path)
-        args = ["--model-path", "liuhaotian/llava-v1.5-7b", "--image-folder", image_folder, "--question-file", question_file_path, "--answers-file", answer_file_path, "--temperature", "0", "--batch_size", "5"]
-        batch_inference_args = parser.parse_args(args)
+        batch_inference_args = ["--model-path", "liuhaotian/llava-v1.5-7b", "--image-folder", image_folder, "--question-file", question_file_path, "--answers-file", answer_file_path, "--temperature", "0", "--batch_size", "5"]
+        batch_inference_args = parser.parse_args(batch_inference_args)
         
-        llava_batch_inference.eval_model(batch_inference_args)
-    sys.exit()
-
-
+        Custom_Batch_Inference.eval_model(batch_inference_args)

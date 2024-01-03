@@ -2,11 +2,10 @@
 # It takes four arguments.
 
 import argparse
-import random
-import math
-import json
 import sys
 import os
+import random
+import math
 
 import numpy as np
 import matplotlib.pyplot as plt
@@ -18,11 +17,11 @@ from tqdm import tqdm
 parser = argparse.ArgumentParser()
 parser.add_argument("reference_descriptions", type=str, action="store")
 parser.add_argument("input_descriptions", type=str, action="store")
-parser.add_argument("pl_candidate_csv", type=str, action="store")
 parser.add_argument("classification_output", type=str, action="store")
+parser.add_argument("--answer-key", type=str, action="store")
 args = parser.parse_args()
 
-pl_info_header, pl_info = read_csv(args.pl_candidate_csv, has_header=True)
+pl_info_header, pl_info = read_csv(args.answer_key, has_header=True)
 
 # Get indices based on the header
 upc_index = pl_info_header.index("candidate_upc")
@@ -38,11 +37,11 @@ for row in pl_info:
     label_ids[label_id].append(row)
 
 # Read reference descriptions and convert to a dictionary
-reference_data = [json.loads(line) for line in open(args.reference_descriptions)]
-reference_descriptions = {x[0] : x[1:] for x in reference_data}
+_, reference_descriptions = read_csv(args.reference_descriptions, has_header=True)
+reference_descriptions = {x[0] : x[1:] for x in reference_descriptions}
 
 # Read input descriptions
-input_descriptions = [json.loads(line) for line in open(args.input_descriptions)]
+_, input_descriptions = read_csv(args.input_descriptions, has_header=True)
 
 # Threshold constants
 DESCRIPTION_SIMILARITY_THRESHOLD = 0.11  # Scores less than this mean the VLM descriptions are unconfident
@@ -209,18 +208,29 @@ def plot_accuracy_grid(accuracy_grid, step_size):
     
 if __name__ == "__main__":
     weights = [1 for x in range(len(input_descriptions[0]) - 1)]
-    #weights = [1.44, 0.0, 0.03, 0.72, 0.63, 0.09, 0.0, 0.0, 0.45, 0.39, 0.51, 0.06]
+    #weights = [0.0, 0.2, 0.0, 0.6, 0.4, 0.6, 0.4] # Vote 7q
+    #weights = [0.1, 0.6, 0.0, 1.3, 0.5, 0.7, 0.3] # Levenstein 7q
+    #weights = [2.0, 1.73, 1.58, 2.0, 1.55, 1.94, 2.0, 0.71, 2.0, 1.13, 1.04, 0.68] # Vote 12q
+    #weights = [2.0, 2.0, 0.41000000000000014, 2.0, 1.6400000000000001, 2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 0.020000000000000018] # Vote 12q (first half)
+    weights = [0.05, 0.2, 1.07, 0.89, 1.19, 0.71, 2.0, 0.74, 0.77, 1.07, 2.0, 0.14] # Levenstein 12q (first half)
+    #weights = [1.44, 0.0, 0.03, 0.72, 0.63, 0.09, 0.0, 0.0, 0.45, 0.39, 0.51, 0.06] # Levenstein 12q (all halves)
+    #weights = [0.3, 0.4, 0.1, 0.0, 0.8, 1.0, 1.4, 0.1, 0.9, 1.2, 0.8, 2.0] # Levenstein 12q candidates
+    #weights = [1.5, 1.5, 0.81, 1.5, 0.78, 0.48, 0.41999999999999993, 0.0, 0.66, 0.41999999999999993, 0.8400000000000001, 0.09000000000000008] #combo2
+    #weights = [2.0, 2.0, 2.0, 2.0, 2.0, 2.0, 0.53, 2.0, 2.0, 2.0, 2.0, 0.22999999999999998] # combo2 first half
     
     accuracy = main(weights)
+    sys.exit()
     
-    # Use this to classify many times to find the ideal thresholds
-    #step_size = .01
-    #best_thresholds, best_accuracy, accuracy_grid = grid_search(weights, step_size=step_size,start=.05, stop = .2)
-    #print(f"Best thresholds: {best_thresholds}, Best accuracy: {best_accuracy}")
-    #plot_accuracy_grid(accuracy_grid, step_size)
+    step_size = .01
+    best_thresholds, best_accuracy, accuracy_grid = grid_search(weights, step_size=step_size,start=.05, stop = .2)
+    print(f"Best thresholds: {best_thresholds}, Best accuracy: {best_accuracy}")
+    plot_accuracy_grid(accuracy_grid, step_size)
+    
+    sys.exit()
     
     # Use this to classify many times to find the ideal weights
-    #for i in range(len(weights)):
-    #    weights[i] = optimize_weight(i, weights)
-    #print(f"Best weights: {weights}")
-    #accuracy = main(weights)
+    for i in range(len(weights)):
+        weights[i] = optimize_weight(i, weights)
+    
+    print(f"Best weights: {weights}")
+    accuracy = main(weights)
