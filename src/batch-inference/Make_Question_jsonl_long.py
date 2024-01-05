@@ -1,23 +1,19 @@
+# This is the main script for processing images into product descriptions using batch inference.
+# It takes two arguments:
+#   reference_images: this is a folder a folder of images of products
+#   output_dir: this folder will be created and the resulting product descriptions will be placed there
+
 import os
 import sys
 import json
 import shutil
 import argparse
 
-# # Navigate to where the 'develop' branch of the LLaVA repo is stored
-#current_script = os.path.abspath(__file__)
-#parent_directory = os.path.dirname(current_script)
-#path_root = os.path.abspath(os.path.join(parent_directory, "..", "..", "LLaVA-Dev"))
-#sys.path[0] = path_root
-#print(sys.path)
-##sys.path.append(path_root)
-## Import the dev batch inference script
-#import LLaVA.llava.eval.model_vqa_batch as llava_batch_inference
 import Custom_Batch_Inference
 
 parser = argparse.ArgumentParser()
-parser.add_argument("reference_images", type=str, action="store", default=None)
-parser.add_argument("output_dir", type=str, action="store", default=None)
+parser.add_argument("reference_images", type=str, action="store", default=None, help="This is a folder a folder of images of products")
+parser.add_argument("output_dir", type=str, action="store", default=None, help="This folder will be created and the resulting product descriptions will be placed there")
 args = parser.parse_args()
 
 

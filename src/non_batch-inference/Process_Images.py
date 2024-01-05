@@ -1,18 +1,22 @@
-# This script requires two arguments. It will process the reference images and generate product
-# description for each one, which are stored in the output directory.
+# This script is the main script for processing images into product descriptions.
+# It takes two arguments:
+#   reference_images: this is a folder a folder of images of products
+#   output_dir: this folder will be created and the resulting product descriptions will be placed there
 
 import argparse
+import time
 import sys
 import os
-import time
 
 from tqdm import tqdm
 
 import LLaVA_Product_Descriptions_long as LLaVA
+# Use this if you don't want the model to see answers to previous questions
+# import LLaVA_Product_Descriptions_short as LLaVA
 
 parser = argparse.ArgumentParser()
-parser.add_argument("reference_images", type=str, action="store", default=None)
-parser.add_argument("output-dir", type=str, action="store", default=None)
+parser.add_argument("reference_images", type=str, action="store", default=None, help="This is a folder a folder of images of products")
+parser.add_argument("output_dir", type=str, action="store", default=None, help="This folder will be created and the resulting product descriptions will be placed there")
 parser.add_argument("--model-path", type=str, action="store", default="liuhaotian/llava-v1.5-13b")
 parser.add_argument("--upc-whitelist", type=str, action="store", required=False, default=None, help="An optional textfile of allowed UPCs. Useful when splitting a large task across multiple machines")
 args = parser.parse_args()
@@ -49,7 +53,6 @@ inference_parts = LLaVA.load_model(model_args)
 # Run inference on each UPC
 for UPC_index, UPC in enumerate(tqdm(UPCs, position=2)):
     progress = (UPC_index + 1) / len(UPCs)
-    #print(f"Processing Reference Images: {progress:.0%}")
     
     image_paths = os.path.join(args.reference_images, UPC)
     csv_path = os.path.join(args.output_dir, f"{UPC}.csv")

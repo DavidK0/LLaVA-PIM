@@ -19,7 +19,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument("reference_descriptions", type=str, action="store")
 parser.add_argument("input_descriptions", type=str, action="store")
 parser.add_argument("pl_candidate_csv", type=str, action="store")
-parser.add_argument("classification_output", type=str, action="store")
+#parser.add_argument("classification_output", type=str, action="store")
 args = parser.parse_args()
 
 pl_info_header, pl_info = read_csv(args.pl_candidate_csv, has_header=True)
@@ -100,6 +100,7 @@ def classify(input_description, weights):
         if candidate_upc in reference_descriptions:
             description_similarity = get_description_similarity(input_description, reference_descriptions[candidate_upc], weights)
         else:
+            print(f"[WARNING] {label_id} is missing from the reference descriptions")
             description_similarity = math.inf # Block this UPC from being selected by the VLM, but not by Core
         
         scores_list[candidate_upc] = (core_distance, description_similarity)
@@ -152,9 +153,15 @@ def main(weights, thresholds=None):
             if classification_method == "vlm":
                 print(input_description, gold_UPC, predicted_UPC)
     
-    print(f"Accuracy: {total_correct}/{len(input_subset)} ({total_correct/len(input_subset):.1%})")
-    print(f"Core accuracy: {core_correct[1]}/{core_correct[0]} ({core_correct[1]/core_correct[0]:.1%})")
-    print(f"VLM accuracy: {vlm_correct[1]}/{vlm_correct[0]} ({vlm_correct[1]/vlm_correct[0]:.1%})")
+    total_accuracy = total_correct/len(input_subset) if len(input_subset) > 0 else 0
+    print(f"Accuracy: {total_correct}/{len(input_subset)} ({total_accuracy:.1%})")
+    
+    core_accuracy = core_correct[1]/core_correct[0] if core_correct[0] > 0 else 0
+    print(f"Core accuracy: {core_correct[1]}/{core_correct[0]} ({core_accuracy:.1%})")
+    
+    vlm_accuracy = vlm_correct[1]/vlm_correct[0] if vlm_correct[0] > 0 else 0
+    print(f"VLM accuracy: {vlm_correct[1]}/{vlm_correct[0]} ({vlm_accuracy:.1%})")
+    
     return total_correct/len(input_subset)
 
 def optimize_weight(index, weights, step=0.03, min_val=0, max_val=2):

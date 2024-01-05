@@ -3,6 +3,7 @@
 # Example usage:
 #   python llava_custom_inference --model-path liuhaotian/llava-v1.5-13b --image-file products_imgs --load-4bit --composite_output composite_image.png
 # The questions are hard coded in the class ImageQA
+# Prompts do not include previous quetions and answers
 
 # Standard library imports
 import argparse
@@ -35,6 +36,9 @@ from llava.mm_utils import (
     get_model_name_from_path, 
     KeywordsStoppingCriteria
 )
+
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils import save_csv
 
 # This gets appended to the first question

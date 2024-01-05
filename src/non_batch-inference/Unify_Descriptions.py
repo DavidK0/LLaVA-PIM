@@ -1,6 +1,7 @@
-# This script takes one argument:
-#  the path to fv_albt_test_11152023
-# This script unifies the product descriptions contained in that folders
+# This script is used to combine the non_batch-inference results into a single .jsonl file.
+# It takes two arguments:
+#   batched_results: this is the output from Process_Images.py
+#   output: this is the output .jsonl holding the aggregatd product descriptions
 
 import argparse
 import json
@@ -8,7 +9,10 @@ import time
 import csv
 import os
 
+import sys
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from utils import find_min_average_distance_word, read_csv
+
 from tqdm import tqdm
 
 parser = argparse.ArgumentParser()

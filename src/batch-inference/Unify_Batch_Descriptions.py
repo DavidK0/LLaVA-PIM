@@ -1,6 +1,7 @@
 # This script is used to combine the batch-inference results into a single .jsonl file.
-# The output file will hold one .jsonl for each input UPC, and it will aggregate all product
-#   descriptions associated with a single UPC.
+# It takes two arguments:
+#   batched_results: this is the output from Make_Questions_jsonl_long.py
+#   output: this is the output .jsonl holding the aggregatd product descriptions
 
 import argparse
 import json
@@ -13,8 +14,8 @@ from utils import find_min_average_distance_word
 from tqdm import tqdm
 
 parser = argparse.ArgumentParser()
-parser.add_argument("batched_results")
-parser.add_argument("output")
+parser.add_argument("batched_results", action="store", type=str, help="This is the output from Make_Questions_jsonl_long.py")
+parser.add_argument("output", action="store", type=str, help="This is the output .jsonl holding the aggregatd product descriptions")
 args = parser.parse_args()
 
 start_time = time.time()
